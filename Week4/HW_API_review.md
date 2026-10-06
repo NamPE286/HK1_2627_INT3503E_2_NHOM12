@@ -35,15 +35,18 @@
 - Đánh giá tùy biến: Không có tùy biến. Nếu xảy ra lỗi mạng khiến client không nhận được phản hồi và tự động thử lại (retry) lệnh POST, hệ thống sẽ tạo ra hai issue trùng lặp hoàn toàn.
 - Mức độ ảnh hưởng nếu sai phạm: Cao. Gây ra rác dữ liệu trên diện rộng.
 
-
 ## 5. Error response có cấu trúc
-
 
 ## 6. Pagination rõ ràng
 
-
 ## 7. Filter/Sort đa dạng
 
+- Trạng thái: Không đạt toàn phần (Có Filter/Sort, nhưng thiếu Sparse Fieldsets).
+- Lý do: REST API của GitHub bắt buộc trả về toàn bộ payload tĩnh cho một đối tượng.
+  + Đạt về Filter và Sort: API hỗ trợ lọc và sắp xếp khá linh hoạt. Ví dụ, endpoint `GET /search/repositories?q=tetris&sort=stars&order=desc` cho phép tìm kiếm repository theo từ khóa, sắp xếp theo số lượng sao (stars).
+  + Không về Sparse Fieldsets: Không có cách nào truyền `?fields=id,name` để chỉ lấy 2 trường này trên REST API.
+- Đánh giá tùy biến: Chấp nhận được về mặt chiến lược. Thay vì nhồi nhét Sparse Fieldsets vào REST, GitHub tạo hẳn một GraphQL API độc lập chuyên giải quyết bài toán truy vấn trường dữ liệu cụ thể.
+- Mức độ ảnh hưởng nếu sai phạm: Trung bình. Gây lãng phí băng thông mạng đối với các thiết bị di động khi phải tải các trường dữ liệu không bao giờ hiển thị.
 
 ## 8. Authentication & security
 
