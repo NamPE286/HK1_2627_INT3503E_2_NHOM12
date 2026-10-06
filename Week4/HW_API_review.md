@@ -36,8 +36,16 @@
 - Mức độ ảnh hưởng nếu sai phạm: Cao. Gây ra rác dữ liệu trên diện rộng.
 
 ## 5. Error response có cấu trúc
-
+- Trạng thái: Không đạt
+- Lý do: Không đạt chuẩn RFC 7807 (Content-Type application/problem+json, vật thể lỗi không có các trường "type", "title", "status", "detail", "instance"); API có format riêng cho lỗi ("message", "errors")
+- Đánh giá tùy biến: Chấp nhận được
+- Mức độ ảnh hưởng nếu sai phạm: Thấp. Format lỗi có theo chuẩn riêng mà API GitHub đã đặt ra nên vẫn đủ nhất quán
+  
 ## 6. Pagination rõ ràng
+- Trạng thái: Đạt
+- Lý do: Các API mà trả lại nhiều đối tượng cùng lúc có cơ chế phân trang để chọn số trang và số lượng đối tượng mỗi trang; có giới hạn tối đa (100 đối tượng) cho cỡ trang
+- Đánh giá tùy biến: GitHub sử dụng cơ chế phân trang offset-based; một cơ chế đơn giản, nhưng có thể gây vấn đề với database lớn, hoặc khi có thay đổi vào database giữa các requests
+-# Mức độ ảnh hưởng nếu sai phạm: Cao. Việc thiếu giới hạn tối đa có thể làm quá tải server vì phải trả lại quá nhiều đối tượng
 
 ## 7. Filter/Sort đa dạng
 
