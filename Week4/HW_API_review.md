@@ -45,7 +45,7 @@
 - Trạng thái: Đạt
 - Lý do: Các API mà trả lại nhiều đối tượng cùng lúc có cơ chế phân trang để chọn số trang và số lượng đối tượng mỗi trang; có giới hạn tối đa (100 đối tượng) cho cỡ trang
 - Đánh giá tùy biến: GitHub sử dụng cơ chế phân trang offset-based; một cơ chế đơn giản, nhưng có thể gây vấn đề với database lớn, hoặc khi có thay đổi vào database giữa các requests
--# Mức độ ảnh hưởng nếu sai phạm: Cao. Việc thiếu giới hạn tối đa có thể làm quá tải server vì phải trả lại quá nhiều đối tượng
+- Mức độ ảnh hưởng nếu sai phạm: Cao. Việc thiếu giới hạn tối đa có thể làm quá tải server vì phải trả lại quá nhiều đối tượng
 
 ## 7. Filter/Sort đa dạng
 
