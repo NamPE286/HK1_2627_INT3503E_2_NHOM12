@@ -11,9 +11,9 @@
     "test:coverage": "bun test --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/db/migrate.ts",
-    "db:seed": "bun src/db/seed.ts",
     "lint:spec": "spectral lint ../docs/api/openapi.yaml --ruleset ../.spectral.yaml",
-    "test:newman": "newman run postman/trafficlex.postman_collection.json -e postman/local.postman_environment.json --working-dir postman"
+    "test:newman": "newman run postman/trafficlex.postman_collection.json -e postman/local.postman_environment.json --working-dir postman",
+    "demo:seed": "bun scripts/demo-seed.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "1.4.3",
