@@ -1,0 +1,61 @@
+extends: ["spectral:oas"]
+rules:
+  # Ruleset của nhóm — xem ai-rules/04-openapi.md
+  operation-tag-defined: error
+  operation-operationId: error
+  operation-description: off
+  info-contact: warn
+
+  trafficlex-paths-kebab-case:
+    description: Path segment phải lowercase kebab-case (trừ {param}).
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(/([a-z0-9]+(-[a-z0-9]+)*|\\{[a-z0-9_]+\\}))+$"
+
+  trafficlex-no-verbs-in-path:
+    description: Không dùng động từ trong path (dùng HTTP method).
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "/(get|create|update|delete|add|remove|list|search|fetch|make)[a-z-]*(/|$)"
+
+  trafficlex-properties-snake-case:
+    description: JSON property phải snake_case.
+    severity: error
+    given: $.components.schemas..properties[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+
+  trafficlex-query-params-snake-case:
+    description: Query param phải snake_case.
+    severity: error
+    given: $..parameters[?(@.in == 'query')].name
+    then:
+      function: pattern
+      functionOptions:
+        match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+
+  trafficlex-operation-has-4xx:
+    description: Mỗi operation phải khai báo ít nhất một response 4xx.
+    severity: error
+    given: $.paths[*][get,post,put,patch,delete].responses
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          patternProperties:
+            "^4[0-9]{2}$": {}
+          minProperties: 1
+          anyOf:
+            - required: ["400"]
+            - required: ["401"]
+            - required: ["404"]
+            - required: ["422"]
