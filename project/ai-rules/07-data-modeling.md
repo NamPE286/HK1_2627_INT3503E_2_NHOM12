@@ -27,7 +27,7 @@
 ## 07.4 Migration (MUST)
 - Mọi thay đổi schema qua **drizzle-kit** (`bun run db:generate` rồi **review SQL tay** trong `api/drizzle/`).
 - Không sửa migration đã merge; tạo migration mới. Thay đổi phá vỡ dùng expand → migrate → contract.
-- Seed tách khỏi migration (`bun run db:seed`), idempotent, chạy cho một workspace demo.
+- Seed tách khỏi migration (`bun run demo:seed`), idempotent, chạy cho một workspace demo.
 
 ## 07.5 Soft delete & audit (SHOULD)
 - `legal_documents`, `violations` soft delete (`deleted_at`); repository mặc định lọc bản ghi đã xoá.

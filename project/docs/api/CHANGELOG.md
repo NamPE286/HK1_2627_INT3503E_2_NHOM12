@@ -2,18 +2,31 @@
 
 Theo [Keep a Changelog](https://keepachangelog.com) và semver của contract (`info.version`).
 
-## [1.0.0] — 2026-11-25
+## [1.0.0] — 2026-11-25 (thiết kế lại: LexImpact)
+Bài toán đổi từ "tra cứu mức xử phạt" sang **đánh giá tác động của dự thảo văn bản quy phạm pháp luật**.
+Sản phẩm đổi tên **TrafficLex → LexImpact**. Contract 1.0.0 chưa phát hành cho consumer nào nên thay thế trực tiếp.
+
 ### Added
-- Xác thực bằng **Better Auth** (`/api/auth/*`: sign-up/email, sign-in/email, sign-out, get-session); phiên cookie hoặc Bearer.
-- **Workspace riêng cho mỗi tài khoản**: mọi tài nguyên `/api/v1` thuộc về người tạo; truy cập chéo ⇒ 404.
-- `GET /users/me`.
-- `LegalDocuments`: list (phân trang, `q`, `doc_type`, `status`, `number`, `issued_after/before`, `sort`, `fields`, header `Link`),
-  tạo, xem (ETag/`If-None-Match`), sửa (`If-Match`, state machine DRAFT → PUBLISHED → ARCHIVED), xoá mềm.
-- `SourceFiles`: upload PDF/DOCX/TXT (≤ 20 MB, kiểm tra magic bytes, chống trùng SHA-256), list, metadata, tải về, xoá.
+- `Workspaces`: `GET/POST /workspaces`, `GET/PATCH/DELETE /workspaces/{workspace_id}`; chia sẻ chỉ đọc qua
+  `GET/POST /workspaces/{workspace_id}/members` (role `VIEWER`), `DELETE /workspaces/{workspace_id}/members/{user_id}`.
+- `LegalDocuments.kind` (`IN_FORCE` | `DRAFT`); collection chuyển vào `/workspaces/{workspace_id}/legal-documents`.
+- `ChangeInstructions`: `/legal-documents/{document_id}/change-instructions`, `/change-instructions/{instruction_id}`
+  (AMENDS / SUPPLEMENTS / REPLACES / REPEALS, 409 `CONFLICTING_INSTRUCTION`).
+- `ImpactReports`: `GET /legal-documents/{document_id}/impact-report` (singleton chỉ đọc, tính khi đọc, ETag).
+- Dẫn chiếu giữa điều khoản: `GET/POST /provisions/{provision_id}/references`, `DELETE /provision-references/{reference_id}`.
+- Tìm điều khoản trong workspace: `GET /workspaces/{workspace_id}/provisions`.
+- Chế tài gắn trực tiếp vào điều khoản: `/provisions/{provision_id}/sanction-rules`, `/sanction-rules/{rule_id}`.
+- Lược đồ thuộc workspace: `/workspaces/{workspace_id}/diagrams`; `from_draft_id` để khởi tạo từ báo cáo tác động.
+- Response `403 Forbidden` cho VIEWER cố ghi.
 
-### Designed (trong contract, chưa triển khai)
-- Content soạn thảo + revisions + provisions, document-relations, violations, sanction-rules, diagrams.
+### Changed
+- `DocumentStatus`: `DRAFT | PUBLISHED | ARCHIVED` → `EDITING | FINALIZED | ARCHIVED` (tránh nhầm với `kind=DRAFT`).
+- Problem `type` URI: `https://leximpact.example/problems/…`.
 
-### Removed (so với bản phác thảo 1.0.0-draft)
-- `/auth/register|login|refresh|logout` (thay bằng Better Auth), `GET /users`, `PATCH /users/{id}` (bỏ role),
-  `visibility` của diagram (không có chia sẻ công khai).
+### Removed
+- `Violations`, `DocumentRelations`, `/legal-documents/{id}/relations` (thay bằng change-instructions + references + impact-report).
+- `visibility` / node `VIOLATION` trong diagram.
+
+### Trạng thái triển khai
+- Code hiện tại (`api/`) vẫn theo mô hình cũ: chưa có workspace/chia sẻ, `GET/POST /legal-documents` chưa chuyển vào
+  `/workspaces/{workspace_id}/legal-documents` ⇒ test contract (`api/test/platform.test.ts`) báo lệch cho tới khi code theo spec.

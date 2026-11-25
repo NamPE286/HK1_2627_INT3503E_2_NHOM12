@@ -1,0 +1,13 @@
+BẢN MẪU DEMO — dùng để minh hoạ cấu trúc Điều/Khoản/Điểm, không phải nội dung văn bản chính thức.
+Tra cứu văn bản gốc tại https://vbpl.vn
+
+Chương II. [Tên chương]
+
+Điều 6. [Tiêu đề điều]
+1. [Nội dung khoản 1] đối với một trong các hành vi sau đây:
+a) [Hành vi a];
+b) [Hành vi b];
+2. [Nội dung khoản 2]:
+a) [Hành vi a];
+d) [Hành vi d];
+đ) [Hành vi đ — sau d là đ].
