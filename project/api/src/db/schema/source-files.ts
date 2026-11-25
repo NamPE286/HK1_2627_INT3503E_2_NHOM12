@@ -1,6 +1,6 @@
 import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
 import { legalDocuments } from "./legal-documents.js";
+import { workspaces } from "./workspaces.js";
 
 export const SOURCE_FILE_TYPES = {
   "application/pdf": "pdf",
@@ -14,9 +14,9 @@ export const sourceFiles = pgTable(
   "source_files",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    ownerId: uuid("owner_id")
+    workspaceId: uuid("workspace_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     documentId: uuid("document_id")
       .notNull()
       .references(() => legalDocuments.id, { onDelete: "cascade" }),

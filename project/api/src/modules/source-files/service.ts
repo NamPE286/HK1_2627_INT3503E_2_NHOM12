@@ -1,13 +1,14 @@
 /**
- * Upload file gốc của văn bản (PDF / DOCX / TXT). Scope theo workspace (ownerId) như mọi resource.
+ * Upload file gốc của văn bản (PDF / DOCX / TXT). Quyền theo workspace chứa văn bản (đọc: thành viên, ghi: OWNER).
  * Kiểm tra: kích thước (413), kiểu file theo whitelist + magic bytes (415), file rỗng (422), trùng nội dung (409).
  */
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
+import { type Access, requireWorkspace } from "../../auth/workspace-access.js";
 import type { Db } from "../../db/client.js";
-import { legalDocuments } from "../../db/schema/legal-documents.js";
 import { SOURCE_FILE_TYPES, type SourceFileMime, type SourceFileRow, sourceFiles } from "../../db/schema/source-files.js";
 import { buildPagination } from "../../lib/pagination.js";
 import { notFound, ProblemError } from "../../lib/problem.js";
+import { loadDocumentWithAccess } from "../legal-documents/service.js";
 import type { FileStorage } from "../../storage/file-storage.js";
 
 const EXT_TO_MIME: Record<string, SourceFileMime> = {
@@ -55,31 +56,20 @@ const sanitizeFilename = (name: string) =>
   name.replace(/[\\/]/g, "_").replace(/[\u0000-\u001f]/g, "").slice(0, 255) || "file";
 
 export function sourceFileService(db: Db, storage: FileStorage, maxBytes: number) {
-  async function ownedDocument(ownerId: string, documentId: string) {
-    const [doc] = await db
-      .select({ id: legalDocuments.id, status: legalDocuments.status })
-      .from(legalDocuments)
-      .where(and(eq(legalDocuments.id, documentId), eq(legalDocuments.ownerId, ownerId), isNull(legalDocuments.deletedAt)))
-      .limit(1);
-    if (!doc) throw notFound("văn bản");
-    return doc;
-  }
-
-  async function ownedFile(ownerId: string, fileId: string) {
-    const [row] = await db
-      .select()
-      .from(sourceFiles)
-      .where(and(eq(sourceFiles.id, fileId), eq(sourceFiles.ownerId, ownerId)))
-      .limit(1);
+  async function fileWithAccess(userId: string, fileId: string, access: Access) {
+    const [row] = await db.select().from(sourceFiles).where(eq(sourceFiles.id, fileId)).limit(1);
     if (!row) throw notFound("file");
+    await requireWorkspace(db, row.workspaceId, userId, access).catch((e) => {
+      throw e instanceof ProblemError && e.status === 404 ? notFound("file") : e;
+    });
     return row;
   }
 
   return {
-    async upload(ownerId: string, documentId: string, file: File) {
-      const doc = await ownedDocument(ownerId, documentId);
-      if (doc.status !== "DRAFT") {
-        throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Chỉ upload file cho văn bản DRAFT.");
+    async upload(userId: string, documentId: string, file: File) {
+      const doc = await loadDocumentWithAccess(db, userId, documentId, "WRITE");
+      if (doc.status !== "EDITING") {
+        throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Chỉ upload file cho văn bản đang soạn (EDITING).");
       }
       if (file.size === 0) {
         throw new ProblemError(422, "VALIDATION_ERROR", "File rỗng.", {
@@ -107,14 +97,14 @@ export function sourceFileService(db: Db, storage: FileStorage, maxBytes: number
       }
 
       const id = crypto.randomUUID();
-      const storageKey = `${ownerId}/${documentId}/${id}`;
+      const storageKey = `${doc.workspaceId}/${documentId}/${id}`;
       await storage.put(storageKey, data);
       try {
         const [row] = await db
           .insert(sourceFiles)
           .values({
             id,
-            ownerId,
+            workspaceId: doc.workspaceId,
             documentId,
             originalFilename: sanitizeFilename(file.name),
             mimeType: mime,
@@ -130,9 +120,9 @@ export function sourceFileService(db: Db, storage: FileStorage, maxBytes: number
       }
     },
 
-    async list(ownerId: string, documentId: string, page: number, pageSize: number) {
-      await ownedDocument(ownerId, documentId);
-      const where = and(eq(sourceFiles.documentId, documentId), eq(sourceFiles.ownerId, ownerId));
+    async list(userId: string, documentId: string, page: number, pageSize: number) {
+      await loadDocumentWithAccess(db, userId, documentId, "READ");
+      const where = eq(sourceFiles.documentId, documentId);
       const [rows, totals] = await Promise.all([
         db.select().from(sourceFiles).where(where).orderBy(desc(sourceFiles.createdAt), desc(sourceFiles.id))
           .limit(pageSize).offset((page - 1) * pageSize),
@@ -141,19 +131,19 @@ export function sourceFileService(db: Db, storage: FileStorage, maxBytes: number
       return { data: rows.map(toSourceFile), pagination: buildPagination(page, pageSize, totals[0]?.n ?? 0) };
     },
 
-    async get(ownerId: string, fileId: string) {
-      return toSourceFile(await ownedFile(ownerId, fileId));
+    async get(userId: string, fileId: string) {
+      return toSourceFile(await fileWithAccess(userId, fileId, "READ"));
     },
 
-    async content(ownerId: string, fileId: string) {
-      const row = await ownedFile(ownerId, fileId);
+    async content(userId: string, fileId: string) {
+      const row = await fileWithAccess(userId, fileId, "READ");
       const blob = await storage.get(row.storageKey);
       if (!blob) throw new ProblemError(404, "RESOURCE_NOT_FOUND", "Nội dung file không còn trong storage.");
       return { row, blob };
     },
 
-    async remove(ownerId: string, fileId: string) {
-      const row = await ownedFile(ownerId, fileId);
+    async remove(userId: string, fileId: string) {
+      const row = await fileWithAccess(userId, fileId, "WRITE");
       await db.delete(sourceFiles).where(eq(sourceFiles.id, row.id));
       await storage.delete(row.storageKey);
     },

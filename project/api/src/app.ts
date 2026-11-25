@@ -2,7 +2,7 @@
  * Application factory (ElysiaJS). `createApp(deps)` để test inject DB (PGlite) — xem test/helpers.ts.
  *
  *   /api/auth/*          Better Auth (sign-up/email, sign-in/email, sign-out, get-session…) — ADR 0005
- *   /api/v1/*            API nghiệp vụ (văn bản, upload file gốc, …) theo docs/api/openapi.yaml (mặc định yêu cầu đăng nhập)
+ *   /api/v1/*            API nghiệp vụ (workspace & chia sẻ, văn bản, file gốc, …) theo docs/api/openapi.yaml (mặc định yêu cầu đăng nhập)
  *   /docs                Swagger UI của contract · /api/v1/openapi.json
  *   /healthz · /readyz   Ops
  */
@@ -15,6 +15,7 @@ import { healthRoutes } from "./modules/health/routes.js";
 import { legalDocumentsRoutes } from "./modules/legal-documents/routes.js";
 import { sourceFilesRoutes } from "./modules/source-files/routes.js";
 import { usersRoutes } from "./modules/users/routes.js";
+import { workspacesRoutes } from "./modules/workspaces/routes.js";
 import { openapiRoutes } from "./openapi.js";
 
 const requestIds = new WeakMap<Request, { id: string; start: number }>();
@@ -110,7 +111,7 @@ export function createApp(deps: AppDeps) {
       .all("/api/auth/*", ({ request }) => auth.handler(request), { parse: "none" })
       .use(healthRoutes(deps))
       .use(openapiRoutes)
-      .group("/api/v1", (v1) => v1.use(usersRoutes(deps)).use(legalDocumentsRoutes(deps)).use(sourceFilesRoutes(deps)))
+      .group("/api/v1", (v1) => v1.use(usersRoutes(deps)).use(workspacesRoutes(deps)).use(legalDocumentsRoutes(deps)).use(sourceFilesRoutes(deps)))
   );
 }
 

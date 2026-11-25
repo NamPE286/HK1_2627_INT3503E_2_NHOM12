@@ -4,14 +4,21 @@
  */
 import type { components } from "./schema";
 
-export type LegalDocument = components["schemas"]["LegalDocument"];
-export type LegalDocumentCreate = components["schemas"]["LegalDocumentCreate"];
-export type LegalDocumentList = components["schemas"]["LegalDocumentList"];
-export type SourceFile = components["schemas"]["SourceFile"];
-export type SourceFileList = components["schemas"]["SourceFileList"];
-export type Problem = components["schemas"]["Problem"];
-export type DocType = components["schemas"]["DocType"];
-export type DocumentStatus = components["schemas"]["DocumentStatus"];
+type S = components["schemas"];
+export type Workspace = S["Workspace"];
+export type WorkspaceList = S["WorkspaceList"];
+export type Member = S["Member"];
+export type MemberList = S["MemberList"];
+export type MemberRole = S["MemberRole"];
+export type LegalDocument = S["LegalDocument"];
+export type LegalDocumentCreate = S["LegalDocumentCreate"];
+export type LegalDocumentList = S["LegalDocumentList"];
+export type SourceFile = S["SourceFile"];
+export type SourceFileList = S["SourceFileList"];
+export type Problem = S["Problem"];
+export type DocType = S["DocType"];
+export type DocumentKind = S["DocumentKind"];
+export type DocumentStatus = S["DocumentStatus"];
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
@@ -47,30 +54,43 @@ const json = (method: string, body: unknown, headers: Record<string, string> = {
   body: JSON.stringify(body),
 });
 
+const qs = (params: Record<string, unknown>) =>
+  new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]),
+  ).toString();
+
 export interface ListDocumentsParams {
   page?: number;
   page_size?: number;
   q?: string;
+  kind?: DocumentKind;
   status?: DocumentStatus;
   doc_type?: DocType;
   sort?: string;
 }
 
 export const api = {
-  listDocuments(params: ListDocumentsParams = {}) {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]),
-    );
-    return request<LegalDocumentList>(`/legal-documents?${qs}`);
-  },
+  // Workspaces & chia sẻ
+  listWorkspaces: () => request<WorkspaceList>("/workspaces?page_size=100"),
+  getWorkspace: (id: string) => request<Workspace>(`/workspaces/${id}`),
+  createWorkspace: (name: string) => request<Workspace>("/workspaces", json("POST", { name })),
+  listMembers: (id: string) => request<MemberList>(`/workspaces/${id}/members?page_size=100`),
+  shareWorkspace: (id: string, email: string) =>
+    request<Member>(`/workspaces/${id}/members`, json("POST", { email, role: "VIEWER" })),
+  revokeMember: (id: string, userId: string) =>
+    request<void>(`/workspaces/${id}/members/${userId}`, { method: "DELETE" }),
+
+  // Văn bản
+  listDocuments: (workspaceId: string, params: ListDocumentsParams = {}) =>
+    request<LegalDocumentList>(`/workspaces/${workspaceId}/legal-documents?${qs({ ...params })}`),
+  createDocument: (workspaceId: string, body: LegalDocumentCreate) =>
+    request<LegalDocument>(`/workspaces/${workspaceId}/legal-documents`, json("POST", body)),
   getDocument: (id: string) => request<LegalDocument>(`/legal-documents/${id}`),
-  createDocument: (body: LegalDocumentCreate) => request<LegalDocument>("/legal-documents", json("POST", body)),
   updateDocument: (id: string, body: Partial<LegalDocument>, version?: number) =>
-    request<LegalDocument>(
-      `/legal-documents/${id}`,
-      json("PATCH", body, version ? { "If-Match": `W/"${version}"` } : {}),
-    ),
+    request<LegalDocument>(`/legal-documents/${id}`, json("PATCH", body, version ? { "If-Match": `W/"${version}"` } : {})),
   deleteDocument: (id: string) => request<void>(`/legal-documents/${id}`, { method: "DELETE" }),
+
+  // File gốc
   listSourceFiles: (documentId: string) => request<SourceFileList>(`/legal-documents/${documentId}/source-files`),
   uploadSourceFile(documentId: string, file: File) {
     const form = new FormData();

@@ -30,17 +30,17 @@ function AuthCard({ mode }: { mode: "login" | "register" }) {
       return;
     }
     await refetch(); // cập nhật phiên trước khi vào route được bảo vệ (tránh RequireAuth đọc phiên cũ = null)
-    navigate((location.state as { from?: string } | null)?.from ?? "/documents", { replace: true });
+    navigate((location.state as { from?: string } | null)?.from ?? "/", { replace: true });
   };
 
   return (
     <div className="auth-page">
       <form className="card auth-card" onSubmit={onSubmit}>
         <div className="brand big">
-          Traffic<span>Lex</span>
+          Lex<span>Impact</span>
         </div>
         <p className="muted">
-          {isRegister ? "Tạo tài khoản — bạn sẽ có một workspace riêng cho văn bản và lược đồ." : "Đăng nhập vào workspace của bạn."}
+          {isRegister ? "Tạo tài khoản — bạn có sẵn một workspace để đánh giá tác động của dự thảo." : "Đăng nhập vào workspace của bạn."}
         </p>
         {isRegister && (
           <label>

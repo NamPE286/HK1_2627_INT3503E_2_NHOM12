@@ -67,7 +67,7 @@ tr:last-child td { border-bottom: none; }
 
 .badge { white-space: nowrap; display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted); }
 .badge.draft { background: var(--warn-bg); color: #8a5a00; }
-.badge.published { background: var(--ok-bg); color: var(--ok); }
+.badge.finalized { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-color-scheme: dark) { .badge.draft { color: #f0c36b; } }
 
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; }
@@ -90,3 +90,17 @@ tr:last-child td { border-bottom: none; }
   .content { padding: 16px; }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* Workspace & chia sẻ */
+.ws-select { width: auto; max-width: 340px; font-size: 0.9rem; padding: 6px 10px; }
+.tabs { display: flex; gap: 4px; margin: 12px 0 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.tab { font: inherit; background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; color: var(--muted); cursor: pointer; }
+.tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
+.badge.editing { background: var(--warn-bg); color: #8a5a00; }
+.badge.readonly { background: var(--info-bg); color: var(--accent); }
+.badge.draft-kind { margin-left: 8px; background: var(--danger-bg); color: var(--danger); }
+.eyebrow-sm { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--primary); }
+.row-gap { display: flex; gap: 8px; align-items: center; }
+.share-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 240px; }
+@media (prefers-color-scheme: dark) { .badge.editing { color: #f0c36b; } }

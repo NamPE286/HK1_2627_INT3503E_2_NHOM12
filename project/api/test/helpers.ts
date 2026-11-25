@@ -20,7 +20,7 @@ export async function makeTestApp() {
   await migrate(drizzle(client), { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
   const config = loadConfig({ ...process.env, NODE_ENV: "test", CORS_ORIGINS: "http://localhost:5173" });
   const auth = createAuth(db, config);
-  const uploadDir = mkdtempSync(join(tmpdir(), "trafficlex-test-"));
+  const uploadDir = mkdtempSync(join(tmpdir(), "leximpact-test-"));
   const app = createApp({ db, auth, config: { ...config, UPLOAD_MAX_BYTES: 1024 * 1024 }, storage: localFileStorage(uploadDir) });
 
   const request = (path: string, init: RequestInit & { json?: unknown; token?: string; form?: FormData } = {}) => {
@@ -44,7 +44,15 @@ export async function makeTestApp() {
     return { token, user: ((await res.json()) as { user: { id: string } }).user };
   };
 
-  return { app, db, request, signUp, close: async () => { await client.close(); rmSync(uploadDir, { recursive: true, force: true }); } };
+  /** Workspace mặc định (OWNER) của người dùng ứng với token. */
+  const myWorkspace = async (token: string): Promise<string> => {
+    const res = await request("/api/v1/workspaces?role=OWNER", { token });
+    const body = (await res.json()) as { data: { id: string }[] };
+    if (!body.data[0]) throw new Error("no workspace");
+    return body.data[0].id;
+  };
+
+  return { app, db, request, signUp, myWorkspace, close: async () => { await client.close(); rmSync(uploadDir, { recursive: true, force: true }); } };
 }
 
 export type TestApp = Awaited<ReturnType<typeof makeTestApp>>;

@@ -1,4 +1,4 @@
-# TrafficLex — Bài tập lớn INT3505E_2 · Nhóm 12
+# LexImpact — Bài tập lớn INT3505E_2 · Nhóm 12
 
 Tra cứu & biên tập chế tài xử phạt vi phạm giao thông đường bộ theo **Điều/Khoản/Điểm**, có **trình soạn thảo văn bản
 pháp luật** và **vẽ lược đồ thủ công**. Mỗi tài khoản là một **workspace riêng** (bộ văn bản, file gốc, lược đồ riêng).

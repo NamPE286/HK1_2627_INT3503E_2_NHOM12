@@ -19,9 +19,10 @@ beforeAll(async () => {
   t = await makeTestApp();
   alice = (await t.signUp("alice@example.com")).token;
   bob = (await t.signUp("bob@example.com")).token;
-  const res = await t.request("/api/v1/legal-documents", {
+  const ws = await t.myWorkspace(alice);
+  const res = await t.request(`/api/v1/workspaces/${ws}/legal-documents`, {
     method: "POST", token: alice,
-    json: { doc_type: "NGHI_DINH", number: "168/2024/NĐ-CP", title: "Nghị định 168", issuer: "Chính phủ" },
+    json: { kind: "IN_FORCE", doc_type: "NGHI_DINH", number: "168/2024/NĐ-CP", title: "Nghị định 168", issuer: "Chính phủ" },
   });
   docId = (await res.json()).id;
 });
@@ -80,7 +81,7 @@ describe("upload văn bản (source-files)", () => {
     expect(res.status).toBe(422);
   });
 
-  test("workspace khác: Bob không upload/xem/tải/xoá được → 404; không đăng nhập → 401", async () => {
+  test("không phải thành viên: Bob không upload/xem/tải/xoá được → 404; không đăng nhập → 401", async () => {
     expect((await upload(bob, new Blob([PDF]), "x.pdf")).status).toBe(404);
     expect((await t.request(`/api/v1/source-files/${fileId}`, { token: bob })).status).toBe(404);
     expect((await t.request(`/api/v1/source-files/${fileId}/content`, { token: bob })).status).toBe(404);
@@ -88,9 +89,9 @@ describe("upload văn bản (source-files)", () => {
     expect((await t.request(`/api/v1/legal-documents/${docId}/source-files`)).status).toBe(401);
   });
 
-  test("văn bản đã xuất bản không nhận upload → 409", async () => {
+  test("văn bản đã chốt không nhận upload → 409", async () => {
     await t.request(`/api/v1/legal-documents/${docId}`, {
-      method: "PATCH", token: alice, json: { status: "PUBLISHED", issued_date: "2024-12-26", effective_date: "2025-01-01" },
+      method: "PATCH", token: alice, json: { status: "FINALIZED", issued_date: "2024-12-26", effective_date: "2025-01-01" },
     });
     expect((await upload(alice, new Blob(["Điều 2"]), "d2.txt")).status).toBe(409);
   });

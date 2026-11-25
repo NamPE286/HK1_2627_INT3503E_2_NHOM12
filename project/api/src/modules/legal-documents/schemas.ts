@@ -1,23 +1,25 @@
 import { t } from "elysia";
-import { DOC_TYPES, DOCUMENT_STATUSES, type LegalDocumentRow } from "../../db/schema/legal-documents.js";
+import {
+  DOC_TYPES,
+  DOCUMENT_KINDS,
+  DOCUMENT_STATUSES,
+  type LegalDocumentRow,
+} from "../../db/schema/legal-documents.js";
+import { enumString } from "../../lib/enum.js";
 import { PageQuery } from "../../lib/pagination.js";
 
 // DTO khớp components.schemas trong docs/api/openapi.yaml
 const DateStr = t.String({ format: "date" });
 const NullableDate = t.Union([DateStr, t.Null()]);
-/**
- * Enum dạng string + pattern. KHÔNG dùng t.UnionEnum trong t.Optional: Elysia tự điền giá trị enum đầu tiên
- * làm default cho field optional (đã gặp: PATCH bị chèn doc_type/status ngoài ý muốn).
- */
-const enumString = <const T extends readonly string[]>(values: T) =>
-  t.Unsafe<T[number]>(t.String({ pattern: `^(${values.join("|")})$`, description: values.join(" | ") }));
 const DocTypeT = enumString(DOC_TYPES);
+const KindT = enumString(DOCUMENT_KINDS);
 const StatusT = enumString(DOCUMENT_STATUSES);
 
 export const LegalDocumentCreate = t.Object(
   {
+    kind: KindT,
     doc_type: DocTypeT,
-    number: t.String({ minLength: 1, maxLength: 50 }),
+    number: t.String({ minLength: 1, maxLength: 80 }),
     title: t.String({ minLength: 1, maxLength: 500 }),
     issuer: t.String({ maxLength: 200 }),
     issued_date: t.Optional(NullableDate),
@@ -30,7 +32,7 @@ export const LegalDocumentCreate = t.Object(
 export const LegalDocumentUpdate = t.Object(
   {
     doc_type: t.Optional(DocTypeT),
-    number: t.Optional(t.String({ minLength: 1, maxLength: 50 })),
+    number: t.Optional(t.String({ minLength: 1, maxLength: 80 })),
     title: t.Optional(t.String({ minLength: 1, maxLength: 500 })),
     issuer: t.Optional(t.String({ maxLength: 200 })),
     issued_date: t.Optional(NullableDate),
@@ -45,9 +47,10 @@ export const ListQuery = t.Object(
   {
     ...PageQuery,
     q: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+    kind: t.Optional(KindT),
     doc_type: t.Optional(DocTypeT),
     status: t.Optional(StatusT),
-    number: t.Optional(t.String({ maxLength: 50 })),
+    number: t.Optional(t.String({ maxLength: 80 })),
     issued_after: t.Optional(DateStr),
     issued_before: t.Optional(DateStr),
     sort: t.Optional(t.String({ maxLength: 100 })),
@@ -55,16 +58,18 @@ export const ListQuery = t.Object(
   { additionalProperties: false },
 );
 
-export const SORTABLE = ["issued_date", "effective_date", "number", "created_at"] as const;
+export const SORTABLE = ["issued_date", "effective_date", "number", "created_at", "updated_at"] as const;
 
 export type LegalDocumentCreateInput = typeof LegalDocumentCreate.static;
 export type LegalDocumentUpdateInput = typeof LegalDocumentUpdate.static;
 export type ListQueryInput = typeof ListQuery.static;
 
-/** ORM row → API representation (snake_case, không lộ owner_id/deleted_at/content). */
+/** ORM row → API representation (snake_case, không lộ deleted_at/content). */
 export function toLegalDocument(row: LegalDocumentRow) {
   return {
     id: row.id,
+    workspace_id: row.workspaceId,
+    kind: row.kind,
     doc_type: row.docType,
     number: row.number,
     title: row.title,
@@ -75,7 +80,7 @@ export function toLegalDocument(row: LegalDocumentRow) {
     status: row.status,
     current_revision: row.currentRevision,
     version: row.version,
-    published_at: row.publishedAt?.toISOString() ?? null,
+    finalized_at: row.finalizedAt?.toISOString() ?? null,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
   };
@@ -83,6 +88,6 @@ export function toLegalDocument(row: LegalDocumentRow) {
 
 export type LegalDocumentDto = ReturnType<typeof toLegalDocument>;
 export const FIELDS = [
-  "id", "doc_type", "number", "title", "issuer", "issued_date", "effective_date", "expiry_date",
-  "status", "current_revision", "version", "published_at", "created_at", "updated_at",
+  "id", "workspace_id", "kind", "doc_type", "number", "title", "issuer", "issued_date", "effective_date",
+  "expiry_date", "status", "current_revision", "version", "finalized_at", "created_at", "updated_at",
 ] as const satisfies readonly (keyof LegalDocumentDto)[];

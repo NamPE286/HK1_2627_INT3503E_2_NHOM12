@@ -1,4 +1,4 @@
-# 01 — Project brief: TrafficLex
+# 01 — Project brief: LexImpact
 
 > *Tra cứu & biên tập chế tài xử phạt vi phạm giao thông đường bộ, truy vết theo Điều/Khoản/Điểm.*
 
@@ -21,7 +21,7 @@ Văn bản gốc là PDF/HTML dài, cấu trúc lồng nhau, sửa đổi chồn
 ## 3. API consumers
 | Consumer | Nhu cầu |
 |---|---|
-| **Web app TrafficLex** (React SPA — consumer chính) | Tra cứu, soạn thảo, vẽ lược đồ |
+| **Web app LexImpact** (React SPA — consumer chính) | Tra cứu, soạn thảo, vẽ lược đồ |
 | Script / Postman / app khác của chính người dùng | Gọi API bằng `Authorization: Bearer <session token>` để nhập liệu hàng loạt, tích hợp |
 
 ## 4. Người dùng & workspace

@@ -9,7 +9,7 @@ describe("api client", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(problem), { status: 409, headers: { "content-type": "application/problem+json" } }),
     );
-    const err = await api.createDocument({ doc_type: "LUAT", number: "1", title: "t", issuer: "i" }).catch((e) => e);
+    const err = await api.createDocument("ws-1", { kind: "IN_FORCE", doc_type: "LUAT", number: "1", title: "t", issuer: "i" }).catch((e) => e);
     expect(err).toBeInstanceOf(ApiProblem);
     expect(err.code).toBe("DUPLICATE_RESOURCE");
     expect(err.message).toBe("Số hiệu đã tồn tại");
@@ -19,8 +19,8 @@ describe("api client", () => {
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: [], pagination: { page: 2, page_size: 10, total_items: 0, total_pages: 0 } }), { status: 200, headers: { "content-type": "application/json" } }),
     );
-    await api.listDocuments({ page: 2, page_size: 10, q: "", status: "DRAFT" });
-    expect(spy.mock.calls[0]![0]).toBe("/api/v1/legal-documents?page=2&page_size=10&status=DRAFT");
+    await api.listDocuments("ws-1", { page: 2, page_size: 10, q: "", kind: "DRAFT", status: "EDITING" });
+    expect(spy.mock.calls[0]![0]).toBe("/api/v1/workspaces/ws-1/legal-documents?page=2&page_size=10&kind=DRAFT&status=EDITING");
     expect(spy.mock.calls[0]![1]).toMatchObject({ credentials: "include" });
   });
 });

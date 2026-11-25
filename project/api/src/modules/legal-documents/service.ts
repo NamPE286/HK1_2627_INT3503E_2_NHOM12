@@ -1,8 +1,9 @@
 /**
- * Business logic văn bản — luôn scope theo workspace (ownerId). Tài nguyên của workspace khác ⇒ 404.
- * State machine & rule: ai-rules/11-domain-rules.md §11.3.
+ * Văn bản hiện hành / dự thảo trong workspace. Quyền: thành viên đọc, OWNER ghi (auth/workspace-access.ts).
+ * State machine: EDITING → FINALIZED → ARCHIVED (ai-rules/11-domain-rules.md).
  */
 import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, type SQL } from "drizzle-orm";
+import { type Access, assertAccess, requireWorkspace, roleIn } from "../../auth/workspace-access.js";
 import type { Db } from "../../db/client.js";
 import { type DocumentStatus, legalDocuments } from "../../db/schema/legal-documents.js";
 import { buildPagination, parseSort } from "../../lib/pagination.js";
@@ -16,8 +17,8 @@ import {
 } from "./schemas.js";
 
 const TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
-  DRAFT: ["PUBLISHED"],
-  PUBLISHED: ["ARCHIVED"],
+  EDITING: ["FINALIZED"],
+  FINALIZED: ["ARCHIVED"],
   ARCHIVED: [],
 };
 
@@ -26,6 +27,7 @@ const SORT_COLUMNS = {
   effective_date: legalDocuments.effectiveDate,
   number: legalDocuments.number,
   created_at: legalDocuments.createdAt,
+  updated_at: legalDocuments.updatedAt,
 } as const;
 
 function isUniqueViolation(err: unknown): boolean {
@@ -37,42 +39,47 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 const duplicate = (number: string) =>
-  new ProblemError(409, "DUPLICATE_RESOURCE", `Số hiệu ${number} đã tồn tại trong workspace của bạn.`, {
+  new ProblemError(409, "DUPLICATE_RESOURCE", `Số hiệu ${number} đã tồn tại trong workspace.`, {
     title: "Duplicate resource",
   });
 
+/** Lấy văn bản theo ID toàn cục và kiểm tra quyền trên workspace chứa nó. Dùng chung cho module source-files. */
+export async function loadDocumentWithAccess(db: Db, userId: string, documentId: string, access: Access) {
+  const [row] = await db
+    .select()
+    .from(legalDocuments)
+    .where(and(eq(legalDocuments.id, documentId), isNull(legalDocuments.deletedAt)))
+    .limit(1);
+  if (!row) throw notFound("văn bản");
+  assertAccess(await roleIn(db, row.workspaceId, userId), access, "văn bản");
+  return row;
+}
+
 export function legalDocumentService(db: Db) {
-  const scope = (ownerId: string) => and(eq(legalDocuments.ownerId, ownerId), isNull(legalDocuments.deletedAt));
-
-  async function findOwned(ownerId: string, id: string) {
-    const [row] = await db
-      .select()
-      .from(legalDocuments)
-      .where(and(scope(ownerId), eq(legalDocuments.id, id)))
-      .limit(1);
-    if (!row) throw notFound("văn bản");
-    return row;
-  }
-
   return {
-    async list(ownerId: string, q: ListQueryInput) {
+    async list(userId: string, workspaceId: string, q: ListQueryInput) {
+      await requireWorkspace(db, workspaceId, userId, "READ");
       const page = q.page ?? 1;
       const pageSize = q.page_size ?? 20;
-      const sort = parseSort(q.sort ?? "-issued_date", SORTABLE);
-      const filters: (SQL | undefined)[] = [scope(ownerId)];
+      const sort = parseSort(q.sort ?? "-updated_at", SORTABLE);
+      const filters: (SQL | undefined)[] = [eq(legalDocuments.workspaceId, workspaceId), isNull(legalDocuments.deletedAt)];
+      if (q.kind) filters.push(eq(legalDocuments.kind, q.kind));
       if (q.status) filters.push(eq(legalDocuments.status, q.status));
       if (q.doc_type) filters.push(eq(legalDocuments.docType, q.doc_type));
       if (q.number) filters.push(eq(legalDocuments.number, q.number));
       if (q.issued_after) filters.push(gte(legalDocuments.issuedDate, q.issued_after));
       if (q.issued_before) filters.push(lte(legalDocuments.issuedDate, q.issued_before));
       if (q.q) {
-        // TODO(API-05): thay bằng tsvector + unaccent
+        // TODO: thay bằng tsvector + unaccent
         const like = `%${q.q.replace(/[%_\\]/g, "\\$&")}%`;
         filters.push(or(ilike(legalDocuments.title, like), ilike(legalDocuments.number, like)));
       }
       const where = and(...filters);
       const orderBy = [
-        ...sort.map((s) => (s.desc ? desc(SORT_COLUMNS[s.field as keyof typeof SORT_COLUMNS]) : asc(SORT_COLUMNS[s.field as keyof typeof SORT_COLUMNS]))),
+        ...sort.map((s) => {
+          const col = SORT_COLUMNS[s.field as keyof typeof SORT_COLUMNS];
+          return s.desc ? desc(col) : asc(col);
+        }),
         asc(legalDocuments.id),
       ];
       const [rows, totals] = await Promise.all([
@@ -82,16 +89,18 @@ export function legalDocumentService(db: Db) {
       return { data: rows.map(toLegalDocument), pagination: buildPagination(page, pageSize, totals[0]?.n ?? 0) };
     },
 
-    async get(ownerId: string, id: string) {
-      return toLegalDocument(await findOwned(ownerId, id));
+    async get(userId: string, id: string) {
+      return toLegalDocument(await loadDocumentWithAccess(db, userId, id, "READ"));
     },
 
-    async create(ownerId: string, input: LegalDocumentCreateInput) {
+    async create(userId: string, workspaceId: string, input: LegalDocumentCreateInput) {
+      await requireWorkspace(db, workspaceId, userId, "WRITE");
       try {
         const [row] = await db
           .insert(legalDocuments)
           .values({
-            ownerId,
+            workspaceId,
+            kind: input.kind,
             docType: input.doc_type,
             number: input.number.trim(),
             title: input.title.trim(),
@@ -108,19 +117,19 @@ export function legalDocumentService(db: Db) {
       }
     },
 
-    async update(ownerId: string, id: string, input: LegalDocumentUpdateInput, expectVersion?: number) {
-      const current = await findOwned(ownerId, id);
+    async update(userId: string, id: string, input: LegalDocumentUpdateInput, expectVersion?: number) {
+      const current = await loadDocumentWithAccess(db, userId, id, "WRITE");
       if (expectVersion !== undefined && expectVersion !== current.version) {
         throw new ProblemError(412, "PRECONDITION_FAILED", "Tài nguyên đã bị thay đổi, hãy tải lại (ETag lệch).");
       }
       const { status, ...meta } = input;
       const changes: Partial<typeof legalDocuments.$inferInsert> = {};
 
-      if (current.status !== "DRAFT") {
-        const forbidden = Object.keys(meta).filter((k) => k !== "expiry_date");
-        if (forbidden.length) {
-          throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Văn bản đã xuất bản chỉ được sửa expiry_date.", {
-            errors: forbidden.map((f) => ({ field: f, code: "READ_ONLY", message: "Không sửa được khi đã xuất bản" })),
+      if (current.status !== "EDITING") {
+        const locked = Object.keys(meta).filter((k) => k !== "expiry_date");
+        if (locked.length) {
+          throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Văn bản đã chốt chỉ được sửa expiry_date.", {
+            errors: locked.map((f) => ({ field: f, code: "READ_ONLY", message: "Không sửa được khi đã chốt" })),
           });
         }
       }
@@ -136,21 +145,20 @@ export function legalDocumentService(db: Db) {
         if (!TRANSITIONS[current.status].includes(status)) {
           throw new ProblemError(409, "INVALID_STATE_TRANSITION", `Không thể chuyển từ ${current.status} sang ${status}.`);
         }
-        if (status === "PUBLISHED") {
+        if (status === "FINALIZED" && current.kind === "IN_FORCE") {
           const merged = { ...current, ...changes };
           const missing = (["issuedDate", "effectiveDate"] as const).filter((k) => !merged[k]);
           if (missing.length) {
-            throw new ProblemError(422, "VALIDATION_ERROR", "Cần issued_date và effective_date trước khi xuất bản.", {
+            throw new ProblemError(422, "VALIDATION_ERROR", "Văn bản hiện hành cần issued_date và effective_date trước khi chốt.", {
               errors: missing.map((k) => ({
                 field: k === "issuedDate" ? "issued_date" : "effective_date",
-                code: "REQUIRED_FOR_PUBLISH",
-                message: "Bắt buộc khi xuất bản",
+                code: "REQUIRED_FOR_FINALIZE",
+                message: "Bắt buộc khi chốt",
               })),
             });
           }
-          // TODO(API-04): yêu cầu content có >= 1 Điều khi đã có parser content
-          changes.publishedAt = new Date();
         }
+        if (status === "FINALIZED") changes.finalizedAt = new Date();
         changes.status = status;
       }
 
@@ -158,7 +166,7 @@ export function legalDocumentService(db: Db) {
         const [row] = await db
           .update(legalDocuments)
           .set({ ...changes, version: current.version + 1, updatedAt: new Date() })
-          .where(and(scope(ownerId), eq(legalDocuments.id, id), eq(legalDocuments.version, current.version)))
+          .where(and(eq(legalDocuments.id, id), eq(legalDocuments.version, current.version)))
           .returning();
         if (!row) throw new ProblemError(412, "PRECONDITION_FAILED", "Tài nguyên vừa bị thay đổi bởi request khác.");
         return toLegalDocument(row);
@@ -168,15 +176,12 @@ export function legalDocumentService(db: Db) {
       }
     },
 
-    async remove(ownerId: string, id: string) {
-      const current = await findOwned(ownerId, id);
-      if (current.status !== "DRAFT") {
-        throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Chỉ xoá được văn bản DRAFT; hãy lưu trữ (ARCHIVED).");
+    async remove(userId: string, id: string) {
+      const current = await loadDocumentWithAccess(db, userId, id, "WRITE");
+      if (current.status !== "EDITING") {
+        throw new ProblemError(409, "INVALID_STATE_TRANSITION", "Chỉ xoá được văn bản đang soạn; hãy lưu trữ (ARCHIVED).");
       }
-      await db
-        .update(legalDocuments)
-        .set({ deletedAt: new Date() })
-        .where(and(scope(ownerId), eq(legalDocuments.id, id)));
+      await db.update(legalDocuments).set({ deletedAt: new Date() }).where(eq(legalDocuments.id, id));
     },
   };
 }

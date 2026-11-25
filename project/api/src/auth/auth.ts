@@ -9,13 +9,14 @@ import { bearer, openAPI } from "better-auth/plugins";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import * as schema from "../db/schema/auth.js";
+import { workspaceMembers, workspaces } from "../db/schema/workspaces.js";
 
 // Argon2id (Bun.password) theo khuyến nghị OWASP / bài giảng B6: m = 64 MiB, t = 3
 const ARGON2 = { algorithm: "argon2id", memoryCost: 65536, timeCost: 3 } as const;
 
 export function createAuth(db: Db, config: Config) {
   return betterAuth({
-    appName: "TrafficLex",
+    appName: "LexImpact",
     baseURL: config.BETTER_AUTH_URL,
     basePath: "/api/auth",
     secret: config.BETTER_AUTH_SECRET,
@@ -47,6 +48,20 @@ export function createAuth(db: Db, config: Config) {
     advanced: {
       database: { generateId: "uuid" },
       useSecureCookies: config.NODE_ENV === "production",
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Mỗi tài khoản mới có sẵn một workspace của riêng mình (OWNER)
+          after: async (created) => {
+            const [ws] = await db
+              .insert(workspaces)
+              .values({ name: `Workspace của ${created.name}`, ownerId: created.id })
+              .returning({ id: workspaces.id });
+            await db.insert(workspaceMembers).values({ workspaceId: ws!.id, userId: created.id, role: "OWNER" });
+          },
+        },
+      },
     },
     plugins: [bearer(), openAPI()],
   });

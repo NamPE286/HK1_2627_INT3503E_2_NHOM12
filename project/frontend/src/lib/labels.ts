@@ -1,4 +1,4 @@
-import type { DocType, DocumentStatus } from "./api/client";
+import type { DocType, DocumentKind, DocumentStatus, MemberRole } from "./api/client";
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
   LUAT: "Luật",
@@ -8,10 +8,20 @@ export const DOC_TYPE_LABELS: Record<DocType, string> = {
   OTHER: "Khác",
 };
 
+export const KIND_LABELS: Record<DocumentKind, string> = {
+  IN_FORCE: "Văn bản hiện hành",
+  DRAFT: "Dự thảo",
+};
+
 export const STATUS_LABELS: Record<DocumentStatus, string> = {
-  DRAFT: "Bản nháp",
-  PUBLISHED: "Đã xuất bản",
+  EDITING: "Đang soạn",
+  FINALIZED: "Đã chốt",
   ARCHIVED: "Lưu trữ",
+};
+
+export const ROLE_LABELS: Record<MemberRole, string> = {
+  OWNER: "Chủ workspace",
+  VIEWER: "Chỉ xem",
 };
 
 export const formatBytes = (n: number) =>
