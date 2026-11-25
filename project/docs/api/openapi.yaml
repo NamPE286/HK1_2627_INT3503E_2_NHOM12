@@ -1,28 +1,44 @@
 openapi: 3.1.0
 info:
-  title: TrafficLex API
+  title: LexImpact API
   version: 1.0.0
-  summary: Tra cứu & biên tập chế tài xử phạt vi phạm giao thông đường bộ theo Điều/Khoản/Điểm.
+  summary: Đánh giá tác động của dự thảo văn bản quy phạm pháp luật tới hệ thống văn bản hiện hành.
   description: |
-    API contract (design-first) của TrafficLex — bài tập lớn INT3505E_2, Nhóm 12.
+    API contract (design-first) của LexImpact — bài tập lớn INT3505E_2, Nhóm 12.
+
+    ## Bài toán
+    Người soạn thảo chính sách cần biết một **dự thảo** sửa đổi, bổ sung, thay thế, bãi bỏ những điều/khoản/điểm nào
+    của văn bản hiện hành; điều khoản nào khác đang **dẫn chiếu** tới chúng; **chế tài** thay đổi trước/sau ra sao;
+    có **xung đột** giữa các chỉ dẫn thay đổi hay không. API cung cấp:
+    1. Workspace chứa văn bản hiện hành (`kind=IN_FORCE`) và dự thảo (`kind=DRAFT`), file gốc PDF/DOCX/TXT.
+    2. Nội dung có cấu trúc Chương/Mục/Điều/Khoản/Điểm (`/content`) → điều khoản trích dẫn được (`/provisions`).
+    3. Chỉ dẫn thay đổi của dự thảo (`/change-instructions`) trỏ tới điều khoản hiện hành.
+    4. Báo cáo tác động (`/impact-report`) và lược đồ tác động (`/diagrams`).
+    5. Chia sẻ workspace cho người khác với quyền chỉ xem (`/members`, role `VIEWER`).
 
     ## Quickstart
     1. Đăng ký: `POST /api/auth/sign-up/email` `{ "email", "password", "name" }` (Better Auth — xem `/api/auth/reference`).
-    2. Đăng nhập: `POST /api/auth/sign-in/email` → nhận cookie phiên (SPA) **và** header `set-auth-token` (client khác).
-    3. Gọi API với cookie hoặc `Authorization: Bearer <set-auth-token>`.
-    4. Tạo văn bản `POST /legal-documents` → upload file gốc `POST /legal-documents/{id}/source-files` → `GET /legal-documents`.
+       Mỗi tài khoản mới có sẵn một workspace của riêng mình.
+    2. Đăng nhập: `POST /api/auth/sign-in/email` → cookie phiên httpOnly (web) hoặc header `set-auth-token`
+       dùng làm `Authorization: Bearer <token>`.
+    3. `GET /workspaces` → lấy `workspace_id` → `POST /workspaces/{workspace_id}/legal-documents` (văn bản hiện hành),
+       `PUT /legal-documents/{document_id}/content` → tạo dự thảo (`kind=DRAFT`) → `POST /legal-documents/{draft_id}/change-instructions`
+       → `GET /legal-documents/{draft_id}/impact-report`.
 
-    ## Workspace riêng cho mỗi tài khoản
-    Mỗi tài khoản là một **instance/workspace độc lập**: văn bản, file, hành vi, chế tài, lược đồ đều thuộc về người tạo.
-    Mọi endpoint `/api/v1` yêu cầu đăng nhập và **chỉ trả dữ liệu của workspace hiện tại**; tài nguyên của tài khoản khác
-    trả `404` (không lộ sự tồn tại). Khoá nghiệp vụ (vd số hiệu văn bản) chỉ unique trong một workspace.
+    ## Phân quyền
+    | | Chưa đăng nhập | OWNER | VIEWER | Không phải thành viên |
+    |---|---|---|---|---|
+    | Đọc | 401 | ✓ | ✓ | 404 |
+    | Ghi, chia sẻ | 401 | ✓ | 403 | 404 |
 
     ## Quy ước
-    - JSON & query param dùng `snake_case`; path dùng `kebab-case`; enum `UPPER_SNAKE_CASE`.
-    - Collection trả `{ data, pagination }`, phân trang `page` / `page_size` (≤ 100).
-    - Lỗi trả `application/problem+json` (RFC 9457) với `code` ổn định cho máy đọc.
+    - Path `kebab-case` số nhiều; JSON và query `snake_case`; enum `UPPER_SNAKE_CASE`; thời gian ISO 8601.
+    - Collection nằm dưới workspace (`/workspaces/{workspace_id}/...`); item có ID toàn cục truy cập phẳng
+      (`/legal-documents/{document_id}`, `/provisions/{provision_id}`…) để path không sâu quá 2 cấp resource.
+    - Collection trả `{ data, pagination }`, phân trang `page` / `page_size` (≤ 100), header `Link`.
+    - Lỗi trả `application/problem+json` (RFC 9457) với `code` ổn định.
     - Tài nguyên soạn thảo (`content`, `diagrams`) dùng ETag + `If-Match` (optimistic concurrency).
-    - Client phải bỏ qua field không biết (tolerant reader); v1 chỉ thay đổi theo hướng bổ sung.
+    - v1 chỉ thay đổi theo hướng bổ sung; client bỏ qua field không biết.
   contact:
     name: Nhóm 12 — INT3505E_2
   license:
@@ -34,20 +50,22 @@ servers:
 tags:
   - name: Users
     description: Người dùng hiện tại (đăng ký/đăng nhập do Better Auth xử lý tại `/api/auth/*`).
+  - name: Workspaces
+    description: Workspace và chia sẻ quyền xem (read-only).
   - name: LegalDocuments
-    description: Văn bản pháp luật, nội dung soạn thảo (Điều/Khoản/Điểm), revision.
+    description: Văn bản hiện hành và dự thảo; nội dung Điều/Khoản/Điểm; revision.
   - name: SourceFiles
-    description: File gốc (PDF/DOCX/TXT) upload cho văn bản.
+    description: File gốc (PDF/DOCX/TXT) của văn bản.
   - name: Provisions
-    description: Điều khoản dẫn xuất từ nội dung văn bản (chỉ đọc).
-  - name: DocumentRelations
-    description: Quan hệ có hướng giữa các văn bản (association resource).
-  - name: Violations
-    description: Hành vi vi phạm giao thông.
+    description: Điều khoản dẫn xuất từ nội dung (chỉ đọc) và dẫn chiếu giữa các điều khoản.
+  - name: ChangeInstructions
+    description: Chỉ dẫn thay đổi của dự thảo tới điều khoản hiện hành.
+  - name: ImpactReports
+    description: Báo cáo tác động của dự thảo (tính toán, chỉ đọc).
   - name: SanctionRules
-    description: Chế tài áp dụng cho hành vi, có căn cứ provision và khoảng hiệu lực.
+    description: Chế tài gắn với điều khoản (dùng để so sánh trước/sau trong báo cáo tác động).
   - name: Diagrams
-    description: Lược đồ vẽ thủ công của người dùng.
+    description: Lược đồ tác động vẽ thủ công.
 security:
   - cookieAuth: []
   - bearerAuth: []
@@ -58,7 +76,7 @@ paths:
     get:
       tags: [Users]
       operationId: getCurrentUser
-      summary: Người dùng đang đăng nhập (chủ workspace)
+      summary: Người dùng đang đăng nhập
       responses:
         '200':
           description: OK
@@ -66,17 +84,172 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ───────────────────────────── Workspaces ─────────────────────────────
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      operationId: listWorkspaces
+      summary: Workspace của tôi và workspace được chia sẻ cho tôi
+      parameters:
+        - name: role
+          in: query
+          description: Lọc theo vai trò của tôi trong workspace.
+          schema: { $ref: '#/components/schemas/MemberRole' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkspaceList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Workspaces]
+      operationId: createWorkspace
+      summary: Tạo workspace mới (người tạo là OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkspaceCreate' }
+            example: { name: Dự thảo sửa đổi nghị định xử phạt }
+      responses:
+        '201':
+          description: Đã tạo.
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /workspaces/{workspace_id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      operationId: getWorkspace
+      summary: Chi tiết workspace
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Workspaces]
+      operationId: updateWorkspace
+      summary: Đổi tên workspace (OWNER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkspaceUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    delete:
+      tags: [Workspaces]
+      operationId: deleteWorkspace
+      summary: Xoá workspace và toàn bộ dữ liệu (OWNER)
+      responses:
+        '204': { description: Đã xoá. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /workspaces/{workspace_id}/members:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      operationId: listWorkspaceMembers
+      summary: Danh sách thành viên (chủ và người được chia sẻ)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemberList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Workspaces]
+      operationId: shareWorkspace
+      summary: Chia sẻ workspace cho người khác với quyền chỉ xem (OWNER)
+      description: |
+        Người được chia sẻ phải đã có tài khoản (nếu không ⇒ 422 `MEMBER_NOT_REGISTERED`).
+        1.0.0 chỉ hỗ trợ `role: VIEWER` (read-only); đã là thành viên ⇒ 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberCreate' }
+            example: { email: tham.dinh@example.com, role: VIEWER }
+      responses:
+        '201':
+          description: Đã chia sẻ.
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /workspaces/{workspace_id}/members/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+      - $ref: '#/components/parameters/UserId'
+    delete:
+      tags: [Workspaces]
+      operationId: revokeWorkspaceMember
+      summary: Thu hồi quyền xem (OWNER) hoặc tự rời workspace (VIEWER)
+      description: Không thể xoá OWNER ⇒ 409 `CANNOT_REMOVE_OWNER`.
+      responses:
+        '204': { description: Đã thu hồi. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   # ───────────────────────────── Legal documents ─────────────────────────────
-  /legal-documents:
+  /workspaces/{workspace_id}/legal-documents:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
     get:
       tags: [LegalDocuments]
       operationId: listLegalDocuments
-      summary: Liệt kê / tìm văn bản
+      summary: Liệt kê / tìm văn bản hiện hành và dự thảo trong workspace
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/Fields'
         - $ref: '#/components/parameters/Query'
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/DocumentKind' }
         - name: doc_type
           in: query
           schema: { $ref: '#/components/schemas/DocType' }
@@ -86,7 +259,7 @@ paths:
         - name: number
           in: query
           description: Lọc chính xác theo số hiệu.
-          schema: { type: string, example: 168/2024/NĐ-CP }
+          schema: { type: string }
         - name: issued_after
           in: query
           schema: { type: string, format: date }
@@ -95,8 +268,8 @@ paths:
           schema: { type: string, format: date }
         - name: sort
           in: query
-          description: 'Cho phép: `issued_date`, `effective_date`, `number`, `created_at` (tiền tố `-` = giảm dần). Mặc định `-issued_date`.'
-          schema: { type: string, default: -issued_date, example: -issued_date }
+          description: 'Cho phép: `issued_date`, `effective_date`, `number`, `created_at`, `updated_at` (tiền tố `-` = giảm dần). Mặc định `-updated_at`.'
+          schema: { type: string, default: -updated_at }
       responses:
         '200':
           description: OK
@@ -106,10 +279,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LegalDocumentList' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [LegalDocuments]
       operationId: createLegalDocument
-      summary: Tạo văn bản nháp
+      summary: Thêm văn bản hiện hành hoặc tạo dự thảo
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -117,16 +292,28 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/LegalDocumentCreate' }
-            example:
-              doc_type: NGHI_DINH
-              number: 168/2024/NĐ-CP
-              title: Quy định xử phạt vi phạm hành chính về trật tự, an toàn giao thông trong lĩnh vực giao thông đường bộ
-              issuer: Chính phủ
-              issued_date: '2024-12-26'
-              effective_date: '2025-01-01'
+            examples:
+              in_force:
+                summary: Văn bản hiện hành
+                value:
+                  kind: IN_FORCE
+                  doc_type: NGHI_DINH
+                  number: 168/2024/NĐ-CP
+                  title: Quy định xử phạt vi phạm hành chính về trật tự, an toàn giao thông trong lĩnh vực giao thông đường bộ; trừ điểm, phục hồi điểm giấy phép lái xe
+                  issuer: Chính phủ
+                  issued_date: '2024-12-26'
+                  effective_date: '2025-01-01'
+              draft:
+                summary: Dự thảo
+                value:
+                  kind: DRAFT
+                  doc_type: NGHI_DINH
+                  number: '[Dự thảo] sửa đổi NĐ 168/2024/NĐ-CP'
+                  title: '[Tên dự thảo]'
+                  issuer: '[Cơ quan chủ trì soạn thảo]'
       responses:
         '201':
-          description: Đã tạo.
+          description: Đã tạo (status `EDITING`).
           headers:
             Location: { $ref: '#/components/headers/Location' }
             ETag: { $ref: '#/components/headers/ETag' }
@@ -135,7 +322,10 @@ paths:
               schema: { $ref: '#/components/schemas/LegalDocument' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /legal-documents/{document_id}:
     parameters:
@@ -156,15 +346,16 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LegalDocument' }
         '304': { description: Không đổi so với `If-None-Match`. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [LegalDocuments]
       operationId: updateLegalDocument
-      summary: Sửa metadata / chuyển trạng thái
+      summary: Sửa metadata / chuyển trạng thái (OWNER)
       description: |
-        State machine: `DRAFT → PUBLISHED → ARCHIVED` (không quay lại).
-        Publish yêu cầu đủ `issued_date`, `effective_date` (và content có ≥ 1 Điều khi API-04 hoàn thành).
-        Văn bản `PUBLISHED` chỉ được sửa `expiry_date`.
+        State machine: `EDITING → FINALIZED → ARCHIVED` (không quay lại).
+        Chỉ `EDITING` được sửa nội dung, upload file, gắn chỉ dẫn thay đổi. `kind` không đổi được.
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       requestBody:
@@ -174,7 +365,7 @@ paths:
             schema: { $ref: '#/components/schemas/LegalDocumentUpdate' }
           application/json:
             schema: { $ref: '#/components/schemas/LegalDocumentUpdate' }
-            example: { status: PUBLISHED }
+            example: { status: FINALIZED }
       responses:
         '200':
           description: OK
@@ -185,6 +376,7 @@ paths:
               schema: { $ref: '#/components/schemas/LegalDocument' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
@@ -192,10 +384,12 @@ paths:
     delete:
       tags: [LegalDocuments]
       operationId: deleteLegalDocument
-      summary: Xoá mềm văn bản DRAFT
+      summary: Xoá mềm văn bản (OWNER, chỉ khi `EDITING`)
+      description: Văn bản hiện hành đang là đích của chỉ dẫn thay đổi ⇒ 409 `RESOURCE_IN_USE`.
       responses:
         '204': { description: Đã xoá. Gọi lại trả 404. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /legal-documents/{document_id}/content:
@@ -204,7 +398,7 @@ paths:
     get:
       tags: [LegalDocuments]
       operationId: getDocumentContent
-      summary: Lấy nội dung soạn thảo (JSON TipTap)
+      summary: Nội dung có cấu trúc (JSON TipTap) + mục lục
       parameters:
         - $ref: '#/components/parameters/IfNoneMatch'
       responses:
@@ -216,14 +410,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DocumentContent' }
         '304': { description: Không đổi. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [LegalDocuments]
       operationId: replaceDocumentContent
-      summary: Thay toàn bộ nội dung (văn bản DRAFT)
+      summary: Thay toàn bộ nội dung (OWNER, văn bản `EDITING`)
       description: |
-        Validate cấu trúc Chương/Mục/Điều/Khoản/Điểm, chuẩn hoá số thứ tự, tạo revision mới và tái sinh provisions.
-        Bắt buộc `If-Match` (thiếu ⇒ 428, lệch ⇒ 412). Provision đang được chế tài tham chiếu bị xoá/đổi path ⇒ 409 `RESOURCE_IN_USE`.
+        Validate cấu trúc Chương/Mục/Điều/Khoản/Điểm, chuẩn hoá số thứ tự, tạo revision mới, tái sinh provisions
+        (giữ `provision.id` nếu `path` không đổi) và trích dẫn chiếu dạng “điểm a khoản 4 Điều 6 Nghị định …”.
+        Bắt buộc `If-Match` (thiếu ⇒ 428, lệch ⇒ 412). Xoá/đổi path của provision đang được chỉ dẫn thay đổi
+        hoặc chế tài tham chiếu ⇒ 409 `RESOURCE_IN_USE`.
       parameters:
         - $ref: '#/components/parameters/IfMatchRequired'
       requestBody:
@@ -231,22 +428,17 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/DocumentContentWrite' }
-            examples:
-              nghi_dinh:
-                summary: Một Điều có Khoản và Điểm
-                value:
-                  message: Thêm khoản 4 Điều 6
-                  doc:
-                    type: doc
-                    content:
-                      - { type: legalHeading, attrs: { level: ARTICLE, number: '6', title: Xử phạt người điều khiển xe ô tô vi phạm quy tắc giao thông đường bộ } }
-                      - { type: legalHeading, attrs: { level: CLAUSE, number: '4' } }
-                      - { type: paragraph, content: [ { type: text, text: 'Phạt tiền từ ... đến ... đối với người điều khiển xe thực hiện một trong các hành vi vi phạm sau đây:' } ] }
-                      - { type: legalHeading, attrs: { level: POINT, number: a } }
-                      - { type: paragraph, content: [ { type: text, text: 'Dừng xe, đỗ xe trên phần đường xe chạy ở đoạn đường ngoài đô thị nơi có lề đường rộng;' } ] }
+            example:
+              message: Thêm Điều 1 sửa đổi
+              doc:
+                type: doc
+                content:
+                  - { type: legalHeading, attrs: { level: ARTICLE, number: '1', title: Sửa đổi, bổ sung một số điều của Nghị định … } }
+                  - { type: legalHeading, attrs: { level: CLAUSE, number: '1' } }
+                  - { type: paragraph, content: [ { type: text, text: 'Sửa đổi điểm a khoản 4 Điều 6 như sau: “[nội dung mới]”' } ] }
       responses:
         '200':
-          description: Đã lưu; trả content đã chuẩn hoá.
+          description: Đã lưu; trả nội dung đã chuẩn hoá.
           headers:
             ETag: { $ref: '#/components/headers/ETag' }
           content:
@@ -254,6 +446,7 @@ paths:
               schema: { $ref: '#/components/schemas/DocumentContent' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
@@ -266,13 +459,13 @@ paths:
     get:
       tags: [LegalDocuments]
       operationId: listDocumentRevisions
-      summary: Lịch sử revision
+      summary: Lịch sử revision (mới nhất trước)
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: OK (mới nhất trước)
+          description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RevisionList' }
@@ -289,7 +482,7 @@ paths:
     get:
       tags: [LegalDocuments]
       operationId: getDocumentRevision
-      summary: Một revision kèm content
+      summary: Một revision kèm nội dung
       responses:
         '200':
           description: OK
@@ -302,9 +495,9 @@ paths:
     parameters:
       - $ref: '#/components/parameters/DocumentId'
     get:
-      tags: [LegalDocuments, Provisions]
+      tags: [Provisions]
       operationId: listDocumentProvisions
-      summary: Cây / danh sách provision của văn bản
+      summary: Cây / danh sách điều khoản của văn bản
       parameters:
         - name: view
           in: query
@@ -324,42 +517,20 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProvisionList' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '404': { $ref: '#/components/responses/NotFound' }
-  /legal-documents/{document_id}/relations:
-    parameters:
-      - $ref: '#/components/parameters/DocumentId'
-    get:
-      tags: [LegalDocuments, DocumentRelations]
-      operationId: listDocumentRelationsOfDocument
-      summary: Quan hệ vào/ra của một văn bản
-      parameters:
-        - name: direction
-          in: query
-          schema: { type: string, enum: [incoming, outgoing, both], default: both }
-        - name: relation_type
-          in: query
-          schema: { $ref: '#/components/schemas/RelationType' }
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PageSize'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/DocumentRelationList' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ───────────────────────────── Source files ─────────────────────────────
   /legal-documents/{document_id}/source-files:
     parameters:
       - $ref: '#/components/parameters/DocumentId'
     post:
       tags: [SourceFiles]
       operationId: uploadSourceFile
-      summary: Upload file gốc của văn bản (PDF / DOCX / TXT)
+      summary: Upload file gốc (PDF / DOCX / TXT, OWNER, văn bản `EDITING`)
       description: |
-        `multipart/form-data`, field `file`. Tối đa 20 MB. Kiểu file được xác minh bằng magic bytes (không tin Content-Type).
-        Chỉ nhận cho văn bản `DRAFT`. File có nội dung trùng (cùng SHA-256) trong cùng văn bản ⇒ 409.
+        `multipart/form-data`, field `file`, tối đa 20 MB. Kiểu file được xác minh bằng magic bytes.
+        Trùng nội dung (cùng SHA-256) trong cùng văn bản ⇒ 409.
       requestBody:
         required: true
         content:
@@ -378,6 +549,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SourceFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
@@ -421,11 +593,12 @@ paths:
     delete:
       tags: [SourceFiles]
       operationId: deleteSourceFile
-      summary: Xoá file
+      summary: Xoá file (OWNER)
       responses:
         '204': { description: Đã xoá. }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /source-files/{file_id}/content:
     parameters:
@@ -445,17 +618,23 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  # ───────────────────────────── Provisions ─────────────────────────────
-  /provisions:
+  # ───────────────────────────── Provisions & references ─────────────────────────────
+  /workspaces/{workspace_id}/provisions:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
     get:
       tags: [Provisions]
-      operationId: listProvisions
-      summary: Tìm kiếm điều khoản (full-text, không dấu)
+      operationId: searchProvisions
+      summary: Tìm điều khoản trong workspace (để chọn đích của chỉ dẫn thay đổi)
       parameters:
         - $ref: '#/components/parameters/Query'
         - name: document_id
           in: query
           schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          description: Chỉ điều khoản thuộc văn bản loại này.
+          schema: { $ref: '#/components/schemas/DocumentKind' }
         - name: level
           in: query
           schema: { $ref: '#/components/schemas/ProvisionLevel' }
@@ -469,35 +648,35 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProvisionList' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /provisions/{provision_id}:
     parameters:
       - $ref: '#/components/parameters/ProvisionId'
     get:
       tags: [Provisions]
       operationId: getProvision
-      summary: Chi tiết điều khoản kèm trích dẫn
+      summary: Chi tiết điều khoản kèm trích dẫn chuẩn
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Provision' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
-
-  # ───────────────────────────── Document relations ─────────────────────────────
-  /document-relations:
+  /provisions/{provision_id}/references:
+    parameters:
+      - $ref: '#/components/parameters/ProvisionId'
     get:
-      tags: [DocumentRelations]
-      operationId: listDocumentRelations
-      summary: Liệt kê quan hệ văn bản
+      tags: [Provisions]
+      operationId: listProvisionReferences
+      summary: Dẫn chiếu tới (incoming) hoặc từ (outgoing) điều khoản này
       parameters:
-        - name: document_id
+        - name: direction
           in: query
-          description: Văn bản là source hoặc target.
-          schema: { type: string, format: uuid }
-        - name: relation_type
-          in: query
-          schema: { $ref: '#/components/schemas/RelationType' }
+          schema: { type: string, enum: [incoming, outgoing], default: incoming }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -505,17 +684,20 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/DocumentRelationList' }
+              schema: { $ref: '#/components/schemas/ProvisionReferenceList' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
-      tags: [DocumentRelations]
-      operationId: createDocumentRelation
-      summary: Tạo quan hệ văn bản
+      tags: [Provisions]
+      operationId: createProvisionReference
+      summary: Thêm dẫn chiếu thủ công từ điều khoản này tới điều khoản khác (OWNER)
+      description: Dẫn chiếu được trích tự động khi lưu nội dung; endpoint này để bổ sung những dẫn chiếu parser bỏ sót.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/DocumentRelationCreate' }
+            schema: { $ref: '#/components/schemas/ProvisionReferenceCreate' }
       responses:
         '201':
           description: Đã tạo.
@@ -523,73 +705,74 @@ paths:
             Location: { $ref: '#/components/headers/Location' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/DocumentRelation' }
+              schema: { $ref: '#/components/schemas/ProvisionReference' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
-  /document-relations/{relation_id}:
+  /provision-references/{reference_id}:
     parameters:
-      - name: relation_id
+      - name: reference_id
         in: path
         required: true
         schema: { type: string, format: uuid }
     delete:
-      tags: [DocumentRelations]
-      operationId: deleteDocumentRelation
-      summary: Xoá quan hệ
+      tags: [Provisions]
+      operationId: deleteProvisionReference
+      summary: Xoá dẫn chiếu thủ công (OWNER)
       responses:
         '204': { description: Đã xoá. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
-  # ───────────────────────────── Violations ─────────────────────────────
-  /violations:
+  # ───────────────────────────── Change instructions ─────────────────────────────
+  /legal-documents/{document_id}/change-instructions:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
     get:
-      tags: [Violations]
-      operationId: listViolations
-      summary: Tìm hành vi vi phạm
+      tags: [ChangeInstructions]
+      operationId: listChangeInstructions
+      summary: Chỉ dẫn thay đổi của một dự thảo
       parameters:
-        - $ref: '#/components/parameters/Query'
-        - name: vehicle_type
+        - name: type
           in: query
-          description: Chỉ hành vi có chế tài cho loại xe này (nhiều giá trị cách nhau bởi dấu phẩy).
-          schema: { type: string, example: 'CAR,MOTORBIKE' }
-        - name: has_point_deduction
+          schema: { $ref: '#/components/schemas/ChangeType' }
+        - name: target_document_id
           in: query
-          schema: { type: boolean }
-        - $ref: '#/components/parameters/AsOf'
-        - name: sort
-          in: query
-          description: 'Cho phép: `name`, `created_at`, `relevance` (mặc định khi có `q`).'
-          schema: { type: string, default: name }
+          schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/Fields'
       responses:
         '200':
           description: OK
-          headers:
-            Link: { $ref: '#/components/headers/Link' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ViolationList' }
+              schema: { $ref: '#/components/schemas/ChangeInstructionList' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
-      tags: [Violations]
-      operationId: createViolation
-      summary: Tạo hành vi
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+      tags: [ChangeInstructions]
+      operationId: createChangeInstruction
+      summary: Gắn chỉ dẫn thay đổi (OWNER, dự thảo `EDITING`)
+      description: |
+        `document_id` phải là dự thảo (`kind=DRAFT`), `target_provision_id` phải thuộc văn bản hiện hành (`kind=IN_FORCE`)
+        cùng workspace ⇒ nếu không: 422. `draft_provision_id` phải thuộc chính dự thảo này.
+        Hai chỉ dẫn xung khắc trên cùng một điều khoản đích (vd `REPEALS` và `AMENDS`) ⇒ 409 `CONFLICTING_INSTRUCTION`.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ViolationCreate' }
+            schema: { $ref: '#/components/schemas/ChangeInstructionCreate' }
             example:
-              slug: do-xe-tren-phan-duong-xe-chay-ngoai-do-thi
-              name: Đỗ xe trên phần đường xe chạy ở đoạn đường ngoài đô thị
-              keywords: [đỗ xe, dừng xe, ngoài đô thị]
+              type: AMENDS
+              draft_provision_id: 2b7f6d0e-8a4c-4f1e-9b2a-0c1d2e3f4a5b
+              target_provision_id: 7b1e4c1a-2f7e-4a0e-9a59-1f0a3b6c9d10
+              note: Điều chỉnh khung phạt
       responses:
         '201':
           description: Đã tạo.
@@ -597,77 +780,103 @@ paths:
             Location: { $ref: '#/components/headers/Location' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Violation' }
+              schema: { $ref: '#/components/schemas/ChangeInstruction' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
-  /violations/{violation_id}:
+  /change-instructions/{instruction_id}:
     parameters:
-      - $ref: '#/components/parameters/ViolationId'
+      - $ref: '#/components/parameters/InstructionId'
     get:
-      tags: [Violations]
-      operationId: getViolation
-      summary: Chi tiết hành vi kèm chế tài hiện hành
-      parameters:
-        - $ref: '#/components/parameters/AsOf'
+      tags: [ChangeInstructions]
+      operationId: getChangeInstruction
+      summary: Chi tiết chỉ dẫn thay đổi
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Violation' }
+              schema: { $ref: '#/components/schemas/ChangeInstruction' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      tags: [Violations]
-      operationId: updateViolation
-      summary: Sửa hành vi
+      tags: [ChangeInstructions]
+      operationId: updateChangeInstruction
+      summary: Sửa chỉ dẫn thay đổi (OWNER)
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ViolationUpdate' }
+            schema: { $ref: '#/components/schemas/ChangeInstructionUpdate' }
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Violation' }
+              schema: { $ref: '#/components/schemas/ChangeInstruction' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
     delete:
-      tags: [Violations]
-      operationId: deleteViolation
-      summary: Xoá mềm hành vi — không được còn chế tài
+      tags: [ChangeInstructions]
+      operationId: deleteChangeInstruction
+      summary: Xoá chỉ dẫn thay đổi (OWNER)
       responses:
         '204': { description: Đã xoá. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── Impact report ─────────────────────────────
+  /legal-documents/{document_id}/impact-report:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      tags: [ImpactReports]
+      operationId: getImpactReport
+      summary: Báo cáo tác động của dự thảo (singleton chỉ đọc, tính khi đọc)
+      description: |
+        Chỉ cho văn bản `kind=DRAFT` (khác ⇒ 422 `NOT_A_DRAFT`). Tổng hợp từ chỉ dẫn thay đổi, dẫn chiếu và chế tài:
+        điều khoản/văn bản bị tác động, dẫn chiếu bị gãy hoặc cần rà soát, chế tài trước → sau, cảnh báo xung đột.
+        `ETag` đổi khi dự thảo, chỉ dẫn, dẫn chiếu hoặc chế tài liên quan đổi ⇒ dùng `If-None-Match` để tránh tính lại.
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - name: as_of
+          in: query
+          description: Ngày dùng để xác định điều khoản/chế tài “đang có hiệu lực” (mặc định hôm nay).
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImpactReport' }
+        '304': { description: Không đổi. }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-  /violations/{violation_id}/sanction-rules:
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  # ───────────────────────────── Sanction rules ─────────────────────────────
+  /provisions/{provision_id}/sanction-rules:
     parameters:
-      - $ref: '#/components/parameters/ViolationId'
+      - $ref: '#/components/parameters/ProvisionId'
     get:
       tags: [SanctionRules]
       operationId: listSanctionRules
-      summary: Chế tài của hành vi (theo thời điểm)
+      summary: Chế tài quy định tại điều khoản
       parameters:
         - $ref: '#/components/parameters/AsOf'
-        - name: vehicle_type
-          in: query
-          schema: { $ref: '#/components/schemas/VehicleType' }
-        - name: status
-          in: query
-          description: Trạng thái tính tại `as_of`.
-          schema: { $ref: '#/components/schemas/RuleStatus' }
-        - name: sort
-          in: query
-          description: 'Cho phép: `effective_from`, `fine_max_vnd`. Mặc định `-effective_from`.'
-          schema: { type: string, default: -effective_from }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -677,31 +886,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SanctionRuleList' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [SanctionRules]
       operationId: createSanctionRule
-      summary: Tạo chế tài
-      description: |
-        `fine_min_vnd ≤ fine_max_vnd`; `points_deducted` bắt buộc khi `point_deduction_applicability = APPLIES`, phải null khi khác.
-        Khoảng hiệu lực không chồng lấn với rule khác cùng (`violation_id`, `vehicle_type`).
+      summary: Gắn chế tài vào điều khoản (OWNER)
+      description: '`fine_min_vnd ≤ fine_max_vnd`; `points_deducted` bắt buộc khi `point_deduction_applicability = APPLIES`; khoảng hiệu lực hợp lệ.'
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/SanctionRuleCreate' }
-            example:
-              provision_id: 7b1e4c1a-2f7e-4a0e-9a59-1f0a3b6c9d10
-              vehicle_type: CAR
-              fine_min_vnd: 0
-              fine_max_vnd: 0
-              point_deduction_applicability: UNKNOWN
-              points_deducted: null
-              additional_sanctions: []
-              remedial_measures: []
-              effective_from: '2025-01-01'
-              effective_to: null
-              is_sample: true
       responses:
         '201':
           description: Đã tạo.
@@ -712,6 +908,7 @@ paths:
               schema: { $ref: '#/components/schemas/SanctionRule' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /sanction-rules/{rule_id}:
@@ -724,12 +921,6 @@ paths:
       tags: [SanctionRules]
       operationId: getSanctionRule
       summary: Chi tiết chế tài
-      parameters:
-        - $ref: '#/components/parameters/AsOf'
-        - name: expand
-          in: query
-          description: 'Nhúng tài nguyên liên quan. Cho phép: `provision`, `violation`.'
-          schema: { type: string, example: provision }
       responses:
         '200':
           description: OK
@@ -737,11 +928,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SanctionRule' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [SanctionRules]
       operationId: updateSanctionRule
-      summary: Sửa chế tài
+      summary: Sửa chế tài (OWNER)
       requestBody:
         required: true
         content:
@@ -755,23 +947,27 @@ paths:
               schema: { $ref: '#/components/schemas/SanctionRule' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
     delete:
       tags: [SanctionRules]
       operationId: deleteSanctionRule
-      summary: Xoá chế tài
+      summary: Xoá chế tài (OWNER)
       responses:
         '204': { description: Đã xoá. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ───────────────────────────── Diagrams ─────────────────────────────
-  /diagrams:
+  /workspaces/{workspace_id}/diagrams:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
     get:
       tags: [Diagrams]
       operationId: listDiagrams
-      summary: Lược đồ trong workspace của tôi
+      summary: Lược đồ trong workspace
       parameters:
         - $ref: '#/components/parameters/Query'
         - name: sort
@@ -788,10 +984,12 @@ paths:
               schema: { $ref: '#/components/schemas/DiagramList' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Diagrams]
       operationId: createDiagram
-      summary: Tạo lược đồ
+      summary: Tạo lược đồ (OWNER); có thể khởi tạo từ báo cáo tác động
+      description: Có `from_draft_id` ⇒ server sinh sẵn node/edge từ báo cáo tác động của dự thảo đó, người dùng chỉnh tay sau.
       requestBody:
         required: true
         content:
@@ -808,6 +1006,8 @@ paths:
               schema: { $ref: '#/components/schemas/Diagram' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /diagrams/{diagram_id}:
     parameters:
@@ -827,11 +1027,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Diagram' }
         '304': { description: Không đổi. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Diagrams]
       operationId: updateDiagram
-      summary: Lưu canvas / metadata
+      summary: Lưu canvas / metadata (OWNER)
       parameters:
         - $ref: '#/components/parameters/IfMatchRequired'
       requestBody:
@@ -849,6 +1050,7 @@ paths:
               schema: { $ref: '#/components/schemas/Diagram' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
@@ -857,10 +1059,11 @@ paths:
     delete:
       tags: [Diagrams]
       operationId: deleteDiagram
-      summary: Xoá lược đồ
+      summary: Xoá lược đồ (OWNER)
       responses:
         '204': { description: Đã xoá. }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
 components:
@@ -869,11 +1072,11 @@ components:
       type: apiKey
       in: cookie
       name: better-auth.session_token
-      description: Cookie phiên httpOnly do Better Auth đặt sau `POST /api/auth/sign-in/email` (dùng cho SPA).
+      description: Cookie phiên httpOnly do Better Auth đặt sau `POST /api/auth/sign-in/email`.
     bearerAuth:
       type: http
       scheme: bearer
-      description: Session token Better Auth (header `set-auth-token` khi đăng nhập), dùng cho Postman / client ngoài trình duyệt.
+      description: Session token Better Auth (header `set-auth-token` khi đăng nhập).
 
   parameters:
     Page:
@@ -890,17 +1093,18 @@ components:
       name: fields
       in: query
       description: Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400.
-      schema: { type: string, example: 'id,number,title,status' }
+      schema: { type: string }
+      example: 'id,number,title,status'
     Query:
       name: q
       in: query
       description: Từ khoá full-text (không phân biệt dấu / hoa thường).
-      schema: { type: string, minLength: 1, maxLength: 200, example: đỗ xe }
+      schema: { type: string, minLength: 1, maxLength: 200 }
     AsOf:
       name: as_of
       in: query
-      description: Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam).
-      schema: { type: string, format: date, example: '2025-06-01' }
+      description: Ngày xét hiệu lực (mặc định hôm nay, giờ Việt Nam).
+      schema: { type: string, format: date }
     IfMatch:
       name: If-Match
       in: header
@@ -921,6 +1125,16 @@ components:
       in: header
       description: UUID do client sinh; retry cùng key trả lại response đã lưu (24h). Cùng key khác body ⇒ 409.
       schema: { type: string, format: uuid }
+    WorkspaceId:
+      name: workspace_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     DocumentId:
       name: document_id
       in: path
@@ -931,8 +1145,8 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
-    ViolationId:
-      name: violation_id
+    InstructionId:
+      name: instruction_id
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -961,44 +1175,57 @@ components:
       description: Số giây cần chờ trước khi thử lại.
       schema: { type: integer }
     WWWAuthenticate:
-      schema: { type: string, example: Bearer realm="trafficlex", error="invalid_token" }
+      schema: { type: string, example: Bearer realm="leximpact" }
 
   responses:
     BadRequest:
-      description: Request sai cú pháp hoặc query param không hợp lệ.
+      description: Request sai cú pháp hoặc query/path param không hợp lệ.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           example:
-            type: https://trafficlex.example/problems/invalid-query-parameter
+            type: https://leximpact.example/problems/invalid-query-parameter
             title: Invalid query parameter
             status: 400
             detail: page_size phải trong khoảng 1–100.
-            instance: /api/v1/violations
+            instance: /api/v1/workspaces/9c1f…/legal-documents
             code: INVALID_QUERY_PARAMETER
             request_id: 01JDX3M8Q2N6
     Unauthorized:
-      description: Thiếu, sai hoặc hết hạn token / sai thông tin đăng nhập.
+      description: Chưa đăng nhập hoặc phiên không hợp lệ.
       headers:
         WWW-Authenticate: { $ref: '#/components/headers/WWWAuthenticate' }
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           example:
-            type: https://trafficlex.example/problems/unauthenticated
+            type: https://leximpact.example/problems/unauthenticated
             title: Authentication required
             status: 401
-            detail: Thiếu hoặc sai access token.
-            instance: /api/v1/legal-documents
+            detail: Cần đăng nhập để truy cập tài nguyên này.
+            instance: /api/v1/workspaces
             code: UNAUTHENTICATED
             request_id: 01JDX3M8Q2N6
-    NotFound:
-      description: Không tồn tại hoặc không có quyền xem.
+    Forbidden:
+      description: Là thành viên nhưng không đủ quyền (VIEWER cố ghi, hoặc thao tác chỉ dành cho OWNER).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           example:
-            type: https://trafficlex.example/problems/resource-not-found
+            type: https://leximpact.example/problems/forbidden
+            title: Forbidden
+            status: 403
+            detail: Bạn chỉ có quyền xem workspace này.
+            instance: /api/v1/legal-documents/3f0c9a4e-1b2c-4d5e-8f90-123456789abc/content
+            code: FORBIDDEN
+            request_id: 01JDX3M8Q2N6
+    NotFound:
+      description: Không tồn tại hoặc không phải thành viên của workspace chứa nó (ẩn sự tồn tại).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://leximpact.example/problems/resource-not-found
             title: Resource not found
             status: 404
             detail: Không tìm thấy văn bản.
@@ -1006,28 +1233,28 @@ components:
             code: RESOURCE_NOT_FOUND
             request_id: 01JDX3M8Q2N6
     Conflict:
-      description: Xung đột trạng thái (trùng khoá, chuyển trạng thái sai, tài nguyên đang được dùng, idempotency key reuse).
+      description: Xung đột trạng thái (trùng khoá, chuyển trạng thái sai, tài nguyên đang được dùng, chỉ dẫn xung khắc…).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           examples:
+            conflicting_instruction:
+              value:
+                type: https://leximpact.example/problems/conflicting-instruction
+                title: Conflicting instruction
+                status: 409
+                detail: Điểm a khoản 4 Điều 6 đã có chỉ dẫn REPEALS trong dự thảo này.
+                instance: /api/v1/legal-documents/3f0c9a4e-1b2c-4d5e-8f90-123456789abc/change-instructions
+                code: CONFLICTING_INSTRUCTION
+                request_id: 01JDX3M8Q2N6
             duplicate:
               value:
-                type: https://trafficlex.example/problems/duplicate-resource
+                type: https://leximpact.example/problems/duplicate-resource
                 title: Duplicate resource
                 status: 409
-                detail: Số hiệu 168/2024/NĐ-CP đã tồn tại.
-                instance: /api/v1/legal-documents
+                detail: Số hiệu 168/2024/NĐ-CP đã tồn tại trong workspace.
+                instance: /api/v1/workspaces/9c1f…/legal-documents
                 code: DUPLICATE_RESOURCE
-                request_id: 01JDX3M8Q2N6
-            transition:
-              value:
-                type: https://trafficlex.example/problems/invalid-state-transition
-                title: Invalid state transition
-                status: 409
-                detail: Không thể chuyển từ PUBLISHED về DRAFT.
-                instance: /api/v1/legal-documents/3f0c9a4e-1b2c-4d5e-8f90-123456789abc
-                code: INVALID_STATE_TRANSITION
                 request_id: 01JDX3M8Q2N6
     PreconditionFailed:
       description: '`If-Match` không khớp phiên bản hiện tại.'
@@ -1040,7 +1267,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     PayloadTooLarge:
-      description: Body vượt giới hạn (content 2 MB, diagram 500 node).
+      description: Body vượt giới hạn (file 20 MB, nội dung 2 MB, lược đồ 500 node).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1055,7 +1282,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           example:
-            type: https://trafficlex.example/problems/invalid-provision-hierarchy
+            type: https://leximpact.example/problems/invalid-provision-hierarchy
             title: Invalid provision hierarchy
             status: 422
             detail: Cấu trúc văn bản không hợp lệ.
@@ -1109,32 +1336,45 @@ components:
       properties:
         created_at: { type: string, format: date-time, readOnly: true }
         updated_at: { type: string, format: date-time, readOnly: true }
+    UserSummary:
+      type: object
+      required: [id, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string, format: email }
 
     # ───── Enums ─────
+    MemberRole:
+      type: string
+      description: OWNER = đọc/ghi/chia sẻ; VIEWER = chỉ đọc.
+      enum: [OWNER, VIEWER]
+    DocumentKind:
+      type: string
+      description: IN_FORCE = văn bản hiện hành; DRAFT = dự thảo.
+      enum: [IN_FORCE, DRAFT]
     DocType:
       type: string
       enum: [LUAT, NGHI_DINH, THONG_TU, QUYET_DINH, OTHER]
     DocumentStatus:
       type: string
-      enum: [DRAFT, PUBLISHED, ARCHIVED]
+      description: Vòng đời biên tập trong workspace. EDITING → FINALIZED → ARCHIVED.
+      enum: [EDITING, FINALIZED, ARCHIVED]
     ProvisionLevel:
       type: string
       enum: [CHAPTER, SECTION, ARTICLE, CLAUSE, POINT]
-    RelationType:
+    ChangeType:
       type: string
-      enum: [AMENDS, SUPPLEMENTS, REPLACES, REPEALS, REFERENCES, GUIDES]
+      description: AMENDS = sửa đổi; SUPPLEMENTS = bổ sung; REPLACES = thay thế; REPEALS = bãi bỏ.
+      enum: [AMENDS, SUPPLEMENTS, REPLACES, REPEALS]
     VehicleType:
       type: string
       enum: [CAR, MOTORBIKE, TRACTOR, BICYCLE, PEDESTRIAN, OTHER]
     PointDeductionApplicability:
       type: string
       enum: [APPLIES, NOT_APPLICABLE, UNKNOWN]
-    RuleStatus:
-      type: string
-      description: Tính tại `as_of`.
-      enum: [CURRENT, SUPERSEDED, UPCOMING]
 
-    # ───── Users ─────
+    # ───── Users & workspaces ─────
     User:
       allOf:
         - type: object
@@ -1145,17 +1385,70 @@ components:
             display_name: { type: string }
             email_verified: { type: boolean }
         - $ref: '#/components/schemas/Timestamps'
+    WorkspaceCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+    WorkspaceUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+    Workspace:
+      allOf:
+        - type: object
+          required: [id, name, owner, my_role, member_count]
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            name: { type: string }
+            owner: { $ref: '#/components/schemas/UserSummary' }
+            my_role: { $ref: '#/components/schemas/MemberRole' }
+            member_count: { type: integer, minimum: 1, readOnly: true }
+        - $ref: '#/components/schemas/Timestamps'
+    WorkspaceList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Workspace' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    MemberCreate:
+      type: object
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [VIEWER]
+          description: 1.0.0 chỉ chia sẻ quyền xem.
+    Member:
+      type: object
+      required: [user, role, added_at]
+      properties:
+        user: { $ref: '#/components/schemas/UserSummary' }
+        role: { $ref: '#/components/schemas/MemberRole' }
+        added_at: { type: string, format: date-time }
+    MemberList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Member' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
 
     # ───── Legal documents ─────
     LegalDocumentCreate:
       type: object
       additionalProperties: false
-      required: [doc_type, number, title, issuer]
+      required: [kind, doc_type, number, title, issuer]
       properties:
+        kind: { $ref: '#/components/schemas/DocumentKind' }
         doc_type: { $ref: '#/components/schemas/DocType' }
-        number: { type: string, minLength: 1, maxLength: 50, example: 168/2024/NĐ-CP }
+        number: { type: string, minLength: 1, maxLength: 80, description: Số hiệu (unique trong workspace). }
         title: { type: string, minLength: 1, maxLength: 500 }
-        issuer: { type: string, maxLength: 200, example: Chính phủ }
+        issuer: { type: string, maxLength: 200 }
         issued_date: { type: [string, 'null'], format: date }
         effective_date: { type: [string, 'null'], format: date }
         expiry_date: { type: [string, 'null'], format: date }
@@ -1163,10 +1456,10 @@ components:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: JSON Merge Patch — mọi field optional.
+      description: JSON Merge Patch — mọi field optional; `kind` không đổi được.
       properties:
         doc_type: { $ref: '#/components/schemas/DocType' }
-        number: { type: string, minLength: 1, maxLength: 50 }
+        number: { type: string, minLength: 1, maxLength: 80 }
         title: { type: string, minLength: 1, maxLength: 500 }
         issuer: { type: string, maxLength: 200 }
         issued_date: { type: [string, 'null'], format: date }
@@ -1176,9 +1469,11 @@ components:
     LegalDocument:
       allOf:
         - type: object
-          required: [id, doc_type, number, title, issuer, status, current_revision, version]
+          required: [id, workspace_id, kind, doc_type, number, title, issuer, status, current_revision, version]
           properties:
             id: { type: string, format: uuid, readOnly: true }
+            workspace_id: { type: string, format: uuid, readOnly: true }
+            kind: { $ref: '#/components/schemas/DocumentKind' }
             doc_type: { $ref: '#/components/schemas/DocType' }
             number: { type: string }
             title: { type: string }
@@ -1190,35 +1485,18 @@ components:
             current_revision: { type: integer, minimum: 0, readOnly: true, description: 0 = chưa có nội dung. }
             version: { type: integer, minimum: 1, readOnly: true }
             article_count: { type: integer, minimum: 0, readOnly: true }
-            published_at: { type: [string, 'null'], format: date-time, readOnly: true }
+            change_instruction_count:
+              type: integer
+              minimum: 0
+              readOnly: true
+              description: Chỉ có với dự thảo.
+            finalized_at: { type: [string, 'null'], format: date-time, readOnly: true }
         - $ref: '#/components/schemas/Timestamps'
     LegalDocumentList:
       type: object
       required: [data, pagination]
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/LegalDocument' } }
-        pagination: { $ref: '#/components/schemas/Pagination' }
-
-    # ───── Source files ─────
-    SourceFile:
-      type: object
-      required: [id, document_id, original_filename, mime_type, format, size_bytes, sha256, created_at]
-      properties:
-        id: { type: string, format: uuid }
-        document_id: { type: string, format: uuid }
-        original_filename: { type: string, example: Nghị định 168-2024.pdf }
-        mime_type:
-          type: string
-          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]
-        format: { type: string, enum: [pdf, docx, txt] }
-        size_bytes: { type: integer, minimum: 1 }
-        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-        created_at: { type: string, format: date-time }
-    SourceFileList:
-      type: object
-      required: [data, pagination]
-      properties:
-        data: { type: array, items: { $ref: '#/components/schemas/SourceFile' } }
         pagination: { $ref: '#/components/schemas/Pagination' }
 
     # ───── Editor content (TipTap JSON) ─────
@@ -1291,14 +1569,15 @@ components:
       properties:
         level: { $ref: '#/components/schemas/ProvisionLevel' }
         number: { type: string }
-        label: { type: string, example: 'Điều 6. Xử phạt người điều khiển xe ô tô...' }
+        label: { type: string, example: 'Điều 6. Xử phạt …' }
         provision_id: { type: [string, 'null'], format: uuid }
     Revision:
       type: object
-      required: [revision_number, created_at]
+      required: [revision_number, created_at, created_by]
       properties:
         revision_number: { type: integer, minimum: 1 }
         message: { type: [string, 'null'] }
+        created_by: { $ref: '#/components/schemas/UserSummary' }
         created_at: { type: string, format: date-time }
     RevisionDetail:
       allOf:
@@ -1314,7 +1593,37 @@ components:
         data: { type: array, items: { $ref: '#/components/schemas/Revision' } }
         pagination: { $ref: '#/components/schemas/Pagination' }
 
-    # ───── Provisions ─────
+    # ───── Source files ─────
+    SourceFile:
+      type: object
+      required: [id, document_id, original_filename, mime_type, format, size_bytes, sha256, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        document_id: { type: string, format: uuid }
+        original_filename: { type: string, example: du-thao-sua-doi.pdf }
+        mime_type:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]
+        format: { type: string, enum: [pdf, docx, txt] }
+        size_bytes: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        created_at: { type: string, format: date-time }
+    SourceFileList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/SourceFile' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    # ───── Provisions & references ─────
+    ProvisionRef:
+      type: object
+      description: Tham chiếu gọn tới một điều khoản.
+      required: [id, document_id, citation]
+      properties:
+        id: { type: string, format: uuid }
+        document_id: { type: string, format: uuid }
+        citation: { type: string, example: điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP }
     Provision:
       type: object
       required: [id, document_id, level, number, path, label, citation, text, ordinal]
@@ -1328,8 +1637,9 @@ components:
         path: { type: string, example: dieu-6/khoan-4/diem-a }
         label: { type: string, example: Điểm a }
         citation: { type: string, example: điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP }
-        text: { type: string, description: Nội dung thuần văn bản của provision (không gồm con). }
+        text: { type: string, description: Nội dung thuần văn bản (không gồm con). }
         ordinal: { type: integer, minimum: 0 }
+        incoming_reference_count: { type: integer, minimum: 0, readOnly: true }
         breadcrumbs:
           type: array
           items:
@@ -1348,93 +1658,157 @@ components:
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/Provision' } }
         pagination: { $ref: '#/components/schemas/Pagination' }
-
-    # ───── Document relations ─────
-    DocumentRelationCreate:
+    ProvisionReferenceCreate:
       type: object
       additionalProperties: false
-      required: [source_document_id, target_document_id, relation_type]
+      required: [to_provision_id]
       properties:
-        source_document_id: { type: string, format: uuid }
-        target_document_id: { type: string, format: uuid }
-        relation_type: { $ref: '#/components/schemas/RelationType' }
-        source_provision_id: { type: [string, 'null'], format: uuid }
-        target_provision_id: { type: [string, 'null'], format: uuid }
-        note: { type: [string, 'null'], maxLength: 1000 }
-    DocumentRelation:
-      allOf:
-        - $ref: '#/components/schemas/DocumentRelationCreate'
-        - type: object
-          required: [id, created_at]
-          properties:
-            id: { type: string, format: uuid, readOnly: true }
-            created_at: { type: string, format: date-time, readOnly: true }
-    DocumentRelationList:
+        to_provision_id: { type: string, format: uuid }
+        quote: { type: [string, 'null'], maxLength: 500, description: Đoạn văn chứa dẫn chiếu. }
+    ProvisionReference:
+      type: object
+      required: [id, from, to, source, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        from: { $ref: '#/components/schemas/ProvisionRef' }
+        to: { $ref: '#/components/schemas/ProvisionRef' }
+        source:
+          type: string
+          enum: [EXTRACTED, MANUAL]
+          description: EXTRACTED = trích tự động khi lưu nội dung; MANUAL = người dùng thêm.
+        quote: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+    ProvisionReferenceList:
       type: object
       required: [data, pagination]
       properties:
-        data: { type: array, items: { $ref: '#/components/schemas/DocumentRelation' } }
+        data: { type: array, items: { $ref: '#/components/schemas/ProvisionReference' } }
         pagination: { $ref: '#/components/schemas/Pagination' }
 
-    # ───── Violations & sanctions ─────
-    ViolationCreate:
+    # ───── Change instructions ─────
+    ChangeInstructionCreate:
       type: object
       additionalProperties: false
-      required: [slug, name]
+      required: [type, draft_provision_id, target_provision_id]
       properties:
-        slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 120 }
-        name: { type: string, minLength: 1, maxLength: 300 }
-        description: { type: [string, 'null'], maxLength: 5000 }
-        keywords:
-          type: array
-          maxItems: 20
-          items: { type: string, maxLength: 50 }
-    ViolationUpdate:
+        type: { $ref: '#/components/schemas/ChangeType' }
+        draft_provision_id: { type: string, format: uuid, description: Điều khoản trong dự thảo chứa chỉ dẫn. }
+        target_provision_id: { type: string, format: uuid, description: Điều khoản hiện hành bị tác động. }
+        note: { type: [string, 'null'], maxLength: 1000 }
+    ChangeInstructionUpdate:
       type: object
       additionalProperties: false
       minProperties: 1
       properties:
-        slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 120 }
-        name: { type: string, minLength: 1, maxLength: 300 }
-        description: { type: [string, 'null'], maxLength: 5000 }
-        keywords:
-          type: array
-          maxItems: 20
-          items: { type: string, maxLength: 50 }
-    SanctionSummary:
+        type: { $ref: '#/components/schemas/ChangeType' }
+        target_provision_id: { type: string, format: uuid }
+        note: { type: [string, 'null'], maxLength: 1000 }
+    ChangeInstruction:
+      allOf:
+        - type: object
+          required: [id, document_id, type, draft_provision, target_provision]
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            document_id: { type: string, format: uuid, readOnly: true, description: Dự thảo chứa chỉ dẫn. }
+            type: { $ref: '#/components/schemas/ChangeType' }
+            draft_provision: { $ref: '#/components/schemas/ProvisionRef' }
+            target_provision: { $ref: '#/components/schemas/ProvisionRef' }
+            note: { type: [string, 'null'] }
+        - $ref: '#/components/schemas/Timestamps'
+    ChangeInstructionList:
       type: object
-      description: Tóm tắt chế tài hiện hành cho một loại xe (computed).
-      required: [rule_id, vehicle_type, fine_min_vnd, fine_max_vnd, point_deduction_applicability, citation]
+      required: [data, pagination]
       properties:
-        rule_id: { type: string, format: uuid }
-        vehicle_type: { $ref: '#/components/schemas/VehicleType' }
+        data: { type: array, items: { $ref: '#/components/schemas/ChangeInstruction' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    # ───── Impact report ─────
+    ImpactReport:
+      type: object
+      required: [document_id, as_of, generated_at, summary, items, warnings]
+      properties:
+        document_id: { type: string, format: uuid, description: Dự thảo được đánh giá. }
+        as_of: { type: string, format: date }
+        generated_at: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [affected_provisions, affected_documents, broken_references, references_to_review, sanction_changes, conflicts]
+          properties:
+            affected_provisions: { type: integer, minimum: 0 }
+            affected_documents: { type: integer, minimum: 0 }
+            broken_references: { type: integer, minimum: 0, description: Dẫn chiếu tới điều khoản bị bãi bỏ/thay thế. }
+            references_to_review: { type: integer, minimum: 0, description: Dẫn chiếu tới điều khoản bị sửa đổi. }
+            sanction_changes: { type: integer, minimum: 0 }
+            conflicts: { type: integer, minimum: 0 }
+        items:
+          type: array
+          description: Mỗi phần tử là một điều khoản hiện hành bị tác động.
+          items: { $ref: '#/components/schemas/ImpactItem' }
+        warnings:
+          type: array
+          items: { $ref: '#/components/schemas/ImpactWarning' }
+    ImpactItem:
+      type: object
+      required: [target_provision, changes, affected_references, sanction_changes]
+      properties:
+        target_provision: { $ref: '#/components/schemas/ProvisionRef' }
+        changes:
+          type: array
+          items:
+            type: object
+            required: [instruction_id, type, draft_provision]
+            properties:
+              instruction_id: { type: string, format: uuid }
+              type: { $ref: '#/components/schemas/ChangeType' }
+              draft_provision: { $ref: '#/components/schemas/ProvisionRef' }
+        affected_references:
+          type: array
+          description: Điều khoản khác đang dẫn chiếu tới điều khoản bị tác động.
+          items:
+            type: object
+            required: [from_provision, status]
+            properties:
+              from_provision: { $ref: '#/components/schemas/ProvisionRef' }
+              status:
+                type: string
+                enum: [BROKEN, NEEDS_REVIEW]
+                description: BROKEN khi đích bị bãi bỏ/thay thế; NEEDS_REVIEW khi đích bị sửa đổi.
+        sanction_changes:
+          type: array
+          items:
+            type: object
+            required: [rule_id, behavior, before]
+            properties:
+              rule_id: { type: string, format: uuid }
+              behavior: { type: string }
+              before: { $ref: '#/components/schemas/SanctionSnapshot' }
+              after:
+                description: null khi chế tài bị bãi bỏ; có giá trị khi dự thảo gắn chế tài mới cho điều khoản thay thế.
+                oneOf:
+                  - $ref: '#/components/schemas/SanctionSnapshot'
+                  - type: 'null'
+    ImpactWarning:
+      type: object
+      required: [code, message, provision_ids]
+      properties:
+        code:
+          type: string
+          enum: [CONFLICTING_INSTRUCTIONS, BROKEN_REFERENCE, TARGET_NOT_IN_FORCE, TARGET_ALREADY_REPEALED]
+        message: { type: string }
+        provision_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    # ───── Sanction rules ─────
+    SanctionSnapshot:
+      type: object
+      required: [fine_min_vnd, fine_max_vnd, point_deduction_applicability]
+      properties:
+        vehicle_type: { oneOf: [ { $ref: '#/components/schemas/VehicleType' }, { type: 'null' } ] }
         fine_min_vnd: { type: integer, minimum: 0 }
         fine_max_vnd: { type: integer, minimum: 0 }
         point_deduction_applicability: { $ref: '#/components/schemas/PointDeductionApplicability' }
         points_deducted: { type: [integer, 'null'], minimum: 1, maximum: 12 }
-        citation: { type: string }
-    Violation:
-      allOf:
-        - type: object
-          required: [id, slug, name, keywords, current_sanctions]
-          properties:
-            id: { type: string, format: uuid, readOnly: true }
-            slug: { type: string }
-            name: { type: string }
-            description: { type: [string, 'null'] }
-            keywords: { type: array, items: { type: string } }
-            current_sanctions:
-              type: array
-              readOnly: true
-              description: Chế tài có hiệu lực tại `as_of`, mỗi loại xe một phần tử.
-              items: { $ref: '#/components/schemas/SanctionSummary' }
-        - $ref: '#/components/schemas/Timestamps'
-    ViolationList:
-      type: object
-      required: [data, pagination]
-      properties:
-        data: { type: array, items: { $ref: '#/components/schemas/Violation' } }
-        pagination: { $ref: '#/components/schemas/Pagination' }
     AdditionalSanction:
       type: object
       additionalProperties: false
@@ -1447,25 +1821,22 @@ components:
     SanctionRuleFields:
       type: object
       properties:
-        provision_id: { type: string, format: uuid, description: Căn cứ pháp lý (bắt buộc khi tạo). }
-        vehicle_type: { $ref: '#/components/schemas/VehicleType' }
-        fine_min_vnd: { type: integer, minimum: 0, example: 0 }
-        fine_max_vnd: { type: integer, minimum: 0, example: 0 }
+        behavior: { type: string, minLength: 1, maxLength: 500, description: Mô tả hành vi vi phạm. }
+        vehicle_type: { oneOf: [ { $ref: '#/components/schemas/VehicleType' }, { type: 'null' } ] }
+        fine_min_vnd: { type: integer, minimum: 0 }
+        fine_max_vnd: { type: integer, minimum: 0 }
         point_deduction_applicability: { $ref: '#/components/schemas/PointDeductionApplicability' }
         points_deducted: { type: [integer, 'null'], minimum: 1, maximum: 12 }
         additional_sanctions:
           type: array
           items: { $ref: '#/components/schemas/AdditionalSanction' }
-        remedial_measures:
-          type: array
-          items: { type: string, maxLength: 1000 }
-        effective_from: { type: string, format: date }
+        effective_from: { type: [string, 'null'], format: date }
         effective_to: { type: [string, 'null'], format: date }
-        is_sample: { type: boolean, default: false, description: Đánh dấu dữ liệu mẫu (không phải số liệu pháp lý đã kiểm chứng). }
+        is_sample: { type: boolean, default: false, description: Dữ liệu mẫu, không phải số liệu pháp lý đã kiểm chứng. }
     SanctionRuleCreate:
       allOf:
         - $ref: '#/components/schemas/SanctionRuleFields'
-      required: [provision_id, vehicle_type, fine_min_vnd, fine_max_vnd, point_deduction_applicability, effective_from]
+      required: [behavior, fine_min_vnd, fine_max_vnd, point_deduction_applicability]
       unevaluatedProperties: false
     SanctionRuleUpdate:
       allOf:
@@ -1476,14 +1847,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/SanctionRuleFields'
         - type: object
-          required: [id, violation_id, provision_id, vehicle_type, fine_min_vnd, fine_max_vnd, point_deduction_applicability, effective_from, status, citation]
+          required: [id, provision, behavior, fine_min_vnd, fine_max_vnd, point_deduction_applicability]
           properties:
             id: { type: string, format: uuid, readOnly: true }
-            violation_id: { type: string, format: uuid, readOnly: true }
-            status: { $ref: '#/components/schemas/RuleStatus' }
-            citation: { type: string, readOnly: true, example: điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP }
-            provision: { $ref: '#/components/schemas/Provision', description: Chỉ có khi `expand=provision`. }
-            violation: { $ref: '#/components/schemas/Violation', description: Chỉ có khi `expand=violation`. }
+            provision: { $ref: '#/components/schemas/ProvisionRef' }
         - $ref: '#/components/schemas/Timestamps'
     SanctionRuleList:
       type: object
@@ -1499,8 +1866,8 @@ components:
       required: [id, kind, label, position]
       properties:
         id: { type: string, maxLength: 64, description: ID phía client (React Flow). }
-        kind: { type: string, enum: [DOCUMENT, PROVISION, VIOLATION, NOTE] }
-        ref_id: { type: [string, 'null'], format: uuid, description: ID tài nguyên được tham chiếu (null với NOTE). }
+        kind: { type: string, enum: [DOCUMENT, PROVISION, NOTE] }
+        ref_id: { type: [string, 'null'], format: uuid, description: ID văn bản/điều khoản được tham chiếu (null với NOTE). }
         label: { type: string, maxLength: 300 }
         position:
           type: object
@@ -1511,7 +1878,7 @@ components:
             y: { type: number }
         style:
           type: object
-          description: Thuộc tính hiển thị (màu, kích thước) — server không diễn giải.
+          description: Thuộc tính hiển thị — server không diễn giải.
         broken_ref: { type: boolean, readOnly: true, description: true nếu tài nguyên tham chiếu không còn tồn tại. }
     DiagramEdge:
       type: object
@@ -1523,7 +1890,7 @@ components:
         target: { type: string, description: ID node đích. }
         relation_type:
           type: string
-          enum: [AMENDS, SUPPLEMENTS, REPLACES, REPEALS, REFERENCES, GUIDES, CUSTOM]
+          enum: [AMENDS, SUPPLEMENTS, REPLACES, REPEALS, REFERENCES, CUSTOM]
           default: CUSTOM
         label: { type: [string, 'null'], maxLength: 200 }
     Viewport:
@@ -1539,6 +1906,7 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: [string, 'null'], maxLength: 2000 }
+        from_draft_id: { type: [string, 'null'], format: uuid, description: Khởi tạo node/edge từ báo cáo tác động của dự thảo này. }
         nodes: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/DiagramNode' } }
         edges: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/DiagramEdge' } }
         viewport: { $ref: '#/components/schemas/Viewport' }
@@ -1555,9 +1923,10 @@ components:
     DiagramSummary:
       allOf:
         - type: object
-          required: [id, title, node_count, edge_count, version]
+          required: [id, workspace_id, title, node_count, edge_count, version]
           properties:
             id: { type: string, format: uuid, readOnly: true }
+            workspace_id: { type: string, format: uuid, readOnly: true }
             title: { type: string }
             description: { type: [string, 'null'] }
             node_count: { type: integer, minimum: 0 }
