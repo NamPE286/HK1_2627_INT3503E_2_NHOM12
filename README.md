@@ -2,7 +2,7 @@
 
 ## Bài tập lớn cuối kì
 
-[project](./project) — **TrafficLex** (Bun · ElysiaJS · Better Auth · React). Bắt đầu từ [`project/AGENTS.md`](./project/AGENTS.md).
+[project](./project) — **LexImpact** (Bun · ElysiaJS · Better Auth · React). Bắt đầu từ [`project/AGENTS.md`](./project/AGENTS.md).
 
 ## Week4 Homework:
 

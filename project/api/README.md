@@ -1,4 +1,4 @@
-# TrafficLex API (ElysiaJS · Bun · Better Auth · Drizzle · PostgreSQL)
+# LexImpact API (ElysiaJS · Bun · Better Auth · Drizzle · PostgreSQL)
 
 Contract: [`../docs/api/openapi.yaml`](../docs/api/openapi.yaml) · Rule: [`../ai-rules/`](../ai-rules/README.md)
 
@@ -30,17 +30,25 @@ curl -i -X POST localhost:8000/api/auth/sign-in/email -H 'content-type: applicat
 # Gọi API
 curl localhost:8000/api/v1/users/me -H "authorization: Bearer <set-auth-token>"
 ```
-Mỗi tài khoản là một **workspace riêng**: chỉ thấy văn bản/file/lược đồ của mình; tài nguyên của tài khoản khác ⇒ 404.
+Mỗi tài khoản mới có sẵn một workspace (OWNER); chủ có thể chia sẻ quyền chỉ xem cho tài khoản khác. Không phải thành viên ⇒ 404, người xem cố ghi ⇒ 403.
 
-## Chức năng 1.0.0
+## Chức năng đã triển khai
 | Method | Path | |
 |---|---|---|
 | GET | `/api/v1/users/me` | Người dùng hiện tại |
-| GET / POST | `/api/v1/legal-documents` | List (page, page_size, q, doc_type, status, number, issued_after/before, sort, fields) / tạo |
-| GET / PATCH / DELETE | `/api/v1/legal-documents/{document_id}` | ETag, If-Match, If-None-Match, state machine |
+| GET / POST | `/api/v1/workspaces` | Workspace của tôi + được chia sẻ (`my_role`) / tạo workspace |
+| GET / PATCH / DELETE | `/api/v1/workspaces/{workspace_id}` | Chi tiết / đổi tên / xoá (OWNER) |
+| GET / POST | `/api/v1/workspaces/{workspace_id}/members` | Thành viên / chia sẻ chỉ đọc `{email, role: "VIEWER"}` (OWNER) |
+| DELETE | `/api/v1/workspaces/{workspace_id}/members/{user_id}` | Thu hồi (OWNER) hoặc tự rời (VIEWER) |
+| GET / POST | `/api/v1/workspaces/{workspace_id}/legal-documents` | List (page, page_size, q, kind, doc_type, status, number, issued_after/before, sort, fields) / tạo văn bản hiện hành hoặc dự thảo |
+| GET / PATCH / DELETE | `/api/v1/legal-documents/{document_id}` | ETag, If-Match, If-None-Match, EDITING → FINALIZED → ARCHIVED |
 | POST / GET | `/api/v1/legal-documents/{document_id}/source-files` | Upload (multipart `file`: PDF/DOCX/TXT ≤ 20 MB) / list |
 | GET / DELETE | `/api/v1/source-files/{file_id}` | Metadata / xoá |
 | GET | `/api/v1/source-files/{file_id}/content` | Tải file gốc |
+
+Phân quyền: thành viên đọc; chỉ OWNER ghi (VIEWER ghi ⇒ 403); không phải thành viên ⇒ 404.
+Đã thiết kế trong contract, chưa triển khai: content/revisions/provisions, change-instructions, impact-report,
+provision references, sanction-rules, diagrams.
 
 ## Kiểm thử
 ```bash

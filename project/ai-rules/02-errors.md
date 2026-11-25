@@ -5,7 +5,7 @@ Mọi lỗi 4xx/5xx trả `Content-Type: application/problem+json`:
 
 ```json
 {
-  "type": "https://trafficlex.example/problems/validation-error",
+  "type": "https://leximpact.example/problems/validation-error",
   "title": "Validation failed",
   "status": 422,
   "detail": "Khoản phải nằm trong một Điều.",

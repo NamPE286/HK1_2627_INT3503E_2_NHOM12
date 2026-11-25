@@ -1,22 +1,35 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { CreateDocumentForm } from "../features/documents/CreateDocumentForm";
-import { api, type DocumentStatus } from "../lib/api/client";
-import { DOC_TYPE_LABELS, STATUS_LABELS } from "../lib/labels";
+import { useWorkspace } from "../features/workspaces/current";
+import { api, type DocumentKind, type DocumentStatus } from "../lib/api/client";
+import { DOC_TYPE_LABELS, KIND_LABELS, STATUS_LABELS } from "../lib/labels";
 
 const PAGE_SIZE = 10;
+const KIND_TABS: { value: DocumentKind | ""; label: string }[] = [
+  { value: "", label: "Tất cả" },
+  { value: "IN_FORCE", label: "Văn bản hiện hành" },
+  { value: "DRAFT", label: "Dự thảo" },
+];
 
 export function DocumentsPage() {
+  const { workspaceId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
+  const workspace = useWorkspace(workspaceId);
   const page = Number(params.get("page") ?? 1);
   const q = params.get("q") ?? "";
+  const kind = (params.get("kind") ?? "") as DocumentKind | "";
   const status = (params.get("status") ?? "") as DocumentStatus | "";
+  const isOwner = workspace.data?.my_role === "OWNER";
 
   const { data, isPending, error } = useQuery({
-    queryKey: ["documents", { page, q, status }],
-    queryFn: () => api.listDocuments({ page, page_size: PAGE_SIZE, q: q || undefined, status: status || undefined }),
+    queryKey: ["documents", workspaceId, { page, q, kind, status }],
+    queryFn: () =>
+      api.listDocuments(workspaceId, {
+        page, page_size: PAGE_SIZE, q: q || undefined, kind: kind || undefined, status: status || undefined,
+      }),
     placeholderData: keepPreviousData,
   });
 
@@ -26,17 +39,34 @@ export function DocumentsPage() {
     setParams(merged);
   };
 
+  if (workspace.error) return <div className="alert">{workspace.error.message}</div>;
+
   return (
     <section>
       <div className="page-head">
         <div>
-          <h1>Văn bản của tôi</h1>
-          <p className="muted">Workspace riêng — chỉ bạn thấy các văn bản và file đã upload.</p>
+          <h1>{workspace.data?.name ?? "Workspace"}</h1>
+          <p className="muted">
+            {isOwner
+              ? "Văn bản hiện hành và dự thảo của bạn. Chia sẻ quyền xem cho người thẩm định ở mục Chia sẻ."
+              : workspace.data && `Được ${workspace.data.owner.display_name} chia sẻ — bạn chỉ có quyền xem.`}
+          </p>
         </div>
-        {!creating && <button className="btn primary" onClick={() => setCreating(true)}>+ Văn bản mới</button>}
+        {isOwner && !creating && <button className="btn primary" onClick={() => setCreating(true)}>+ Văn bản mới</button>}
+        {workspace.data && !isOwner && <span className="badge readonly">Chỉ xem</span>}
       </div>
 
-      {creating && <CreateDocumentForm onDone={() => setCreating(false)} />}
+      {creating && <CreateDocumentForm workspaceId={workspaceId} onDone={() => setCreating(false)} />}
+
+      <div className="tabs" role="tablist">
+        {KIND_TABS.map((t) => (
+          <button key={t.value} role="tab" aria-selected={kind === t.value}
+                  className={`tab ${kind === t.value ? "active" : ""}`}
+                  onClick={() => update({ kind: t.value, page: "" })}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       <div className="toolbar">
         <input
@@ -56,8 +86,10 @@ export function DocumentsPage() {
         <p className="muted">Đang tải…</p>
       ) : data && data.data.length === 0 ? (
         <div className="empty card">
-          <p>Chưa có văn bản nào{q || status ? " khớp bộ lọc" : ""}.</p>
-          {!q && !status && <button className="btn primary" onClick={() => setCreating(true)}>Tạo văn bản đầu tiên</button>}
+          <p>Chưa có văn bản nào{q || status || kind ? " khớp bộ lọc" : ""}.</p>
+          {isOwner && !q && !status && !kind && (
+            <button className="btn primary" onClick={() => setCreating(true)}>Thêm văn bản đầu tiên</button>
+          )}
         </div>
       ) : (
         <div className="table-wrap card">
@@ -69,7 +101,10 @@ export function DocumentsPage() {
               {data?.data.map((d) => (
                 <tr key={d.id}>
                   <td className="nowrap"><Link to={`/documents/${d.id}`}>{d.number}</Link></td>
-                  <td>{d.title}</td>
+                  <td>
+                    {d.title}
+                    {d.kind === "DRAFT" && <span className="badge draft-kind">{KIND_LABELS.DRAFT}</span>}
+                  </td>
                   <td className="nowrap">{DOC_TYPE_LABELS[d.doc_type]}</td>
                   <td className="nowrap">{d.issued_date ?? "—"}</td>
                   <td><span className={`badge ${d.status.toLowerCase()}`}>{STATUS_LABELS[d.status]}</span></td>

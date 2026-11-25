@@ -1,4 +1,4 @@
-# AGENTS.md — TrafficLex (Bài tập lớn INT3505E_2 · Nhóm 12)
+# AGENTS.md — LexImpact (Bài tập lớn INT3505E_2 · Nhóm 12)
 
 > File này dành cho **mọi AI agent** (Claude Code, Codex, Cursor, Copilot…) và cả thành viên mới.
 > **Bắt buộc đọc toàn bộ rule trong `ai-rules/` trước khi viết code, sửa spec hoặc viết docs.**
@@ -7,7 +7,7 @@
 ## 1. Bối cảnh
 
 - Môn học: **INT3505E_2 — Kiến trúc hướng dịch vụ (SOA) / API Design**. Điểm bài tập nhóm = 40%.
-- Dự án: **TrafficLex** — cơ sở tri thức về hành vi vi phạm giao thông đường bộ và chế tài xử phạt hành chính,
+- Dự án: **LexImpact** — cơ sở tri thức về hành vi vi phạm giao thông đường bộ và chế tài xử phạt hành chính,
   có **trình soạn thảo văn bản pháp luật** (chèn header Điều/Khoản/Điểm) và **trình vẽ lược đồ thủ công**
   (quan hệ giữa văn bản / điều khoản / hành vi). Ý tưởng gốc kế thừa từ repo `NamPE286/INT3011E_6`.
 - **Mỗi tài khoản là một workspace (instance) riêng**: có bộ văn bản, file gốc và lược đồ của riêng mình.

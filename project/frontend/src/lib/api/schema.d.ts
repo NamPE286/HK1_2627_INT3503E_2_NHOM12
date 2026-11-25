@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Người dùng đang đăng nhập (chủ workspace) */
+        /** Người dùng đang đăng nhập */
         get: operations["getCurrentUser"];
         put?: never;
         post?: never;
@@ -21,17 +21,105 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/legal-documents": {
+    "/workspaces": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Liệt kê / tìm văn bản */
+        /** Workspace của tôi và workspace được chia sẻ cho tôi */
+        get: operations["listWorkspaces"];
+        put?: never;
+        /** Tạo workspace mới (người tạo là OWNER) */
+        post: operations["createWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        /** Chi tiết workspace */
+        get: operations["getWorkspace"];
+        put?: never;
+        post?: never;
+        /** Xoá workspace và toàn bộ dữ liệu (OWNER) */
+        delete: operations["deleteWorkspace"];
+        options?: never;
+        head?: never;
+        /** Đổi tên workspace (OWNER) */
+        patch: operations["updateWorkspace"];
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        /** Danh sách thành viên (chủ và người được chia sẻ) */
+        get: operations["listWorkspaceMembers"];
+        put?: never;
+        /**
+         * Chia sẻ workspace cho người khác với quyền chỉ xem (OWNER)
+         * @description Người được chia sẻ phải đã có tài khoản (nếu không ⇒ 422 `MEMBER_NOT_REGISTERED`).
+         *     1.0.0 chỉ hỗ trợ `role: VIEWER` (read-only); đã là thành viên ⇒ 409.
+         */
+        post: operations["shareWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+                user_id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Thu hồi quyền xem (OWNER) hoặc tự rời workspace (VIEWER)
+         * @description Không thể xoá OWNER ⇒ 409 `CANNOT_REMOVE_OWNER`.
+         */
+        delete: operations["revokeWorkspaceMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/legal-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        /** Liệt kê / tìm văn bản hiện hành và dự thảo trong workspace */
         get: operations["listLegalDocuments"];
         put?: never;
-        /** Tạo văn bản nháp */
+        /** Thêm văn bản hiện hành hoặc tạo dự thảo */
         post: operations["createLegalDocument"];
         delete?: never;
         options?: never;
@@ -52,15 +140,17 @@ export interface paths {
         get: operations["getLegalDocument"];
         put?: never;
         post?: never;
-        /** Xoá mềm văn bản DRAFT */
+        /**
+         * Xoá mềm văn bản (OWNER, chỉ khi `EDITING`)
+         * @description Văn bản hiện hành đang là đích của chỉ dẫn thay đổi ⇒ 409 `RESOURCE_IN_USE`.
+         */
         delete: operations["deleteLegalDocument"];
         options?: never;
         head?: never;
         /**
-         * Sửa metadata / chuyển trạng thái
-         * @description State machine: `DRAFT → PUBLISHED → ARCHIVED` (không quay lại).
-         *     Publish yêu cầu đủ `issued_date`, `effective_date` (và content có ≥ 1 Điều khi API-04 hoàn thành).
-         *     Văn bản `PUBLISHED` chỉ được sửa `expiry_date`.
+         * Sửa metadata / chuyển trạng thái (OWNER)
+         * @description State machine: `EDITING → FINALIZED → ARCHIVED` (không quay lại).
+         *     Chỉ `EDITING` được sửa nội dung, upload file, gắn chỉ dẫn thay đổi. `kind` không đổi được.
          */
         patch: operations["updateLegalDocument"];
         trace?: never;
@@ -74,12 +164,14 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Lấy nội dung soạn thảo (JSON TipTap) */
+        /** Nội dung có cấu trúc (JSON TipTap) + mục lục */
         get: operations["getDocumentContent"];
         /**
-         * Thay toàn bộ nội dung (văn bản DRAFT)
-         * @description Validate cấu trúc Chương/Mục/Điều/Khoản/Điểm, chuẩn hoá số thứ tự, tạo revision mới và tái sinh provisions.
-         *     Bắt buộc `If-Match` (thiếu ⇒ 428, lệch ⇒ 412). Provision đang được chế tài tham chiếu bị xoá/đổi path ⇒ 409 `RESOURCE_IN_USE`.
+         * Thay toàn bộ nội dung (OWNER, văn bản `EDITING`)
+         * @description Validate cấu trúc Chương/Mục/Điều/Khoản/Điểm, chuẩn hoá số thứ tự, tạo revision mới, tái sinh provisions
+         *     (giữ `provision.id` nếu `path` không đổi) và trích dẫn chiếu dạng “điểm a khoản 4 Điều 6 Nghị định …”.
+         *     Bắt buộc `If-Match` (thiếu ⇒ 428, lệch ⇒ 412). Xoá/đổi path của provision đang được chỉ dẫn thay đổi
+         *     hoặc chế tài tham chiếu ⇒ 409 `RESOURCE_IN_USE`.
          */
         put: operations["replaceDocumentContent"];
         post?: never;
@@ -98,7 +190,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Lịch sử revision */
+        /** Lịch sử revision (mới nhất trước) */
         get: operations["listDocumentRevisions"];
         put?: never;
         post?: never;
@@ -118,7 +210,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Một revision kèm content */
+        /** Một revision kèm nội dung */
         get: operations["getDocumentRevision"];
         put?: never;
         post?: never;
@@ -137,27 +229,8 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Cây / danh sách provision của văn bản */
+        /** Cây / danh sách điều khoản của văn bản */
         get: operations["listDocumentProvisions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/legal-documents/{document_id}/relations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                document_id: components["parameters"]["DocumentId"];
-            };
-            cookie?: never;
-        };
-        /** Quan hệ vào/ra của một văn bản */
-        get: operations["listDocumentRelationsOfDocument"];
         put?: never;
         post?: never;
         delete?: never;
@@ -179,9 +252,9 @@ export interface paths {
         get: operations["listSourceFiles"];
         put?: never;
         /**
-         * Upload file gốc của văn bản (PDF / DOCX / TXT)
-         * @description `multipart/form-data`, field `file`. Tối đa 20 MB. Kiểu file được xác minh bằng magic bytes (không tin Content-Type).
-         *     Chỉ nhận cho văn bản `DRAFT`. File có nội dung trùng (cùng SHA-256) trong cùng văn bản ⇒ 409.
+         * Upload file gốc (PDF / DOCX / TXT, OWNER, văn bản `EDITING`)
+         * @description `multipart/form-data`, field `file`, tối đa 20 MB. Kiểu file được xác minh bằng magic bytes.
+         *     Trùng nội dung (cùng SHA-256) trong cùng văn bản ⇒ 409.
          */
         post: operations["uploadSourceFile"];
         delete?: never;
@@ -203,7 +276,7 @@ export interface paths {
         get: operations["getSourceFile"];
         put?: never;
         post?: never;
-        /** Xoá file */
+        /** Xoá file (OWNER) */
         delete: operations["deleteSourceFile"];
         options?: never;
         head?: never;
@@ -229,15 +302,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/provisions": {
+    "/workspaces/{workspace_id}/provisions": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
-        /** Tìm kiếm điều khoản (full-text, không dấu) */
-        get: operations["listProvisions"];
+        /** Tìm điều khoản trong workspace (để chọn đích của chỉ dẫn thay đổi) */
+        get: operations["searchProvisions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -255,7 +330,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Chi tiết điều khoản kèm trích dẫn */
+        /** Chi tiết điều khoản kèm trích dẫn chuẩn */
         get: operations["getProvision"];
         put?: never;
         post?: never;
@@ -265,98 +340,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/document-relations": {
+    "/provisions/{provision_id}/references": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                provision_id: components["parameters"]["ProvisionId"];
+            };
             cookie?: never;
         };
-        /** Liệt kê quan hệ văn bản */
-        get: operations["listDocumentRelations"];
+        /** Dẫn chiếu tới (incoming) hoặc từ (outgoing) điều khoản này */
+        get: operations["listProvisionReferences"];
         put?: never;
-        /** Tạo quan hệ văn bản */
-        post: operations["createDocumentRelation"];
+        /**
+         * Thêm dẫn chiếu thủ công từ điều khoản này tới điều khoản khác (OWNER)
+         * @description Dẫn chiếu được trích tự động khi lưu nội dung; endpoint này để bổ sung những dẫn chiếu parser bỏ sót.
+         */
+        post: operations["createProvisionReference"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/document-relations/{relation_id}": {
+    "/provision-references/{reference_id}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                relation_id: string;
+                reference_id: string;
             };
             cookie?: never;
         };
         get?: never;
         put?: never;
         post?: never;
-        /** Xoá quan hệ */
-        delete: operations["deleteDocumentRelation"];
+        /** Xoá dẫn chiếu thủ công (OWNER) */
+        delete: operations["deleteProvisionReference"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/violations": {
+    "/legal-documents/{document_id}/change-instructions": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                document_id: components["parameters"]["DocumentId"];
+            };
             cookie?: never;
         };
-        /** Tìm hành vi vi phạm */
-        get: operations["listViolations"];
+        /** Chỉ dẫn thay đổi của một dự thảo */
+        get: operations["listChangeInstructions"];
         put?: never;
-        /** Tạo hành vi */
-        post: operations["createViolation"];
+        /**
+         * Gắn chỉ dẫn thay đổi (OWNER, dự thảo `EDITING`)
+         * @description `document_id` phải là dự thảo (`kind=DRAFT`), `target_provision_id` phải thuộc văn bản hiện hành (`kind=IN_FORCE`)
+         *     cùng workspace ⇒ nếu không: 422. `draft_provision_id` phải thuộc chính dự thảo này.
+         *     Hai chỉ dẫn xung khắc trên cùng một điều khoản đích (vd `REPEALS` và `AMENDS`) ⇒ 409 `CONFLICTING_INSTRUCTION`.
+         */
+        post: operations["createChangeInstruction"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/violations/{violation_id}": {
+    "/change-instructions/{instruction_id}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                instruction_id: components["parameters"]["InstructionId"];
             };
             cookie?: never;
         };
-        /** Chi tiết hành vi kèm chế tài hiện hành */
-        get: operations["getViolation"];
+        /** Chi tiết chỉ dẫn thay đổi */
+        get: operations["getChangeInstruction"];
         put?: never;
         post?: never;
-        /** Xoá mềm hành vi — không được còn chế tài */
-        delete: operations["deleteViolation"];
+        /** Xoá chỉ dẫn thay đổi (OWNER) */
+        delete: operations["deleteChangeInstruction"];
         options?: never;
         head?: never;
-        /** Sửa hành vi */
-        patch: operations["updateViolation"];
+        /** Sửa chỉ dẫn thay đổi (OWNER) */
+        patch: operations["updateChangeInstruction"];
         trace?: never;
     };
-    "/violations/{violation_id}/sanction-rules": {
+    "/legal-documents/{document_id}/impact-report": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                document_id: components["parameters"]["DocumentId"];
             };
             cookie?: never;
         };
-        /** Chế tài của hành vi (theo thời điểm) */
+        /**
+         * Báo cáo tác động của dự thảo (singleton chỉ đọc, tính khi đọc)
+         * @description Chỉ cho văn bản `kind=DRAFT` (khác ⇒ 422 `NOT_A_DRAFT`). Tổng hợp từ chỉ dẫn thay đổi, dẫn chiếu và chế tài:
+         *     điều khoản/văn bản bị tác động, dẫn chiếu bị gãy hoặc cần rà soát, chế tài trước → sau, cảnh báo xung đột.
+         *     `ETag` đổi khi dự thảo, chỉ dẫn, dẫn chiếu hoặc chế tài liên quan đổi ⇒ dùng `If-None-Match` để tránh tính lại.
+         */
+        get: operations["getImpactReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/provisions/{provision_id}/sanction-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provision_id: components["parameters"]["ProvisionId"];
+            };
+            cookie?: never;
+        };
+        /** Chế tài quy định tại điều khoản */
         get: operations["listSanctionRules"];
         put?: never;
         /**
-         * Tạo chế tài
-         * @description `fine_min_vnd ≤ fine_max_vnd`; `points_deducted` bắt buộc khi `point_deduction_applicability = APPLIES`, phải null khi khác.
-         *     Khoảng hiệu lực không chồng lấn với rule khác cùng (`violation_id`, `vehicle_type`).
+         * Gắn chế tài vào điều khoản (OWNER)
+         * @description `fine_min_vnd ≤ fine_max_vnd`; `points_deducted` bắt buộc khi `point_deduction_applicability = APPLIES`; khoảng hiệu lực hợp lệ.
          */
         post: operations["createSanctionRule"];
         delete?: never;
@@ -378,25 +488,30 @@ export interface paths {
         get: operations["getSanctionRule"];
         put?: never;
         post?: never;
-        /** Xoá chế tài */
+        /** Xoá chế tài (OWNER) */
         delete: operations["deleteSanctionRule"];
         options?: never;
         head?: never;
-        /** Sửa chế tài */
+        /** Sửa chế tài (OWNER) */
         patch: operations["updateSanctionRule"];
         trace?: never;
     };
-    "/diagrams": {
+    "/workspaces/{workspace_id}/diagrams": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
-        /** Lược đồ trong workspace của tôi */
+        /** Lược đồ trong workspace */
         get: operations["listDiagrams"];
         put?: never;
-        /** Tạo lược đồ */
+        /**
+         * Tạo lược đồ (OWNER); có thể khởi tạo từ báo cáo tác động
+         * @description Có `from_draft_id` ⇒ server sinh sẵn node/edge từ báo cáo tác động của dự thảo đó, người dùng chỉnh tay sau.
+         */
         post: operations["createDiagram"];
         delete?: never;
         options?: never;
@@ -417,11 +532,11 @@ export interface paths {
         get: operations["getDiagram"];
         put?: never;
         post?: never;
-        /** Xoá lược đồ */
+        /** Xoá lược đồ (OWNER) */
         delete: operations["deleteDiagram"];
         options?: never;
         head?: never;
-        /** Lưu canvas / metadata */
+        /** Lưu canvas / metadata (OWNER) */
         patch: operations["updateDiagram"];
         trace?: never;
     };
@@ -462,23 +577,41 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        UserSummary: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** Format: email */
+            email?: string;
+        };
+        /**
+         * @description OWNER = đọc/ghi/chia sẻ; VIEWER = chỉ đọc.
+         * @enum {string}
+         */
+        MemberRole: "OWNER" | "VIEWER";
+        /**
+         * @description IN_FORCE = văn bản hiện hành; DRAFT = dự thảo.
+         * @enum {string}
+         */
+        DocumentKind: "IN_FORCE" | "DRAFT";
         /** @enum {string} */
         DocType: "LUAT" | "NGHI_DINH" | "THONG_TU" | "QUYET_DINH" | "OTHER";
-        /** @enum {string} */
-        DocumentStatus: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+        /**
+         * @description Vòng đời biên tập trong workspace. EDITING → FINALIZED → ARCHIVED.
+         * @enum {string}
+         */
+        DocumentStatus: "EDITING" | "FINALIZED" | "ARCHIVED";
         /** @enum {string} */
         ProvisionLevel: "CHAPTER" | "SECTION" | "ARTICLE" | "CLAUSE" | "POINT";
-        /** @enum {string} */
-        RelationType: "AMENDS" | "SUPPLEMENTS" | "REPLACES" | "REPEALS" | "REFERENCES" | "GUIDES";
+        /**
+         * @description AMENDS = sửa đổi; SUPPLEMENTS = bổ sung; REPLACES = thay thế; REPEALS = bãi bỏ.
+         * @enum {string}
+         */
+        ChangeType: "AMENDS" | "SUPPLEMENTS" | "REPLACES" | "REPEALS";
         /** @enum {string} */
         VehicleType: "CAR" | "MOTORBIKE" | "TRACTOR" | "BICYCLE" | "PEDESTRIAN" | "OTHER";
         /** @enum {string} */
         PointDeductionApplicability: "APPLIES" | "NOT_APPLICABLE" | "UNKNOWN";
-        /**
-         * @description Tính tại `as_of`.
-         * @enum {string}
-         */
-        RuleStatus: "CURRENT" | "SUPERSEDED" | "UPCOMING";
         User: {
             /** Format: uuid */
             readonly id: string;
@@ -487,12 +620,49 @@ export interface components {
             display_name: string;
             email_verified: boolean;
         } & components["schemas"]["Timestamps"];
+        WorkspaceCreate: {
+            name: string;
+        };
+        WorkspaceUpdate: {
+            name?: string;
+        };
+        Workspace: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            owner: components["schemas"]["UserSummary"];
+            my_role: components["schemas"]["MemberRole"];
+            readonly member_count: number;
+        } & components["schemas"]["Timestamps"];
+        WorkspaceList: {
+            data: components["schemas"]["Workspace"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        MemberCreate: {
+            /** Format: email */
+            email: string;
+            /**
+             * @description 1.0.0 chỉ chia sẻ quyền xem.
+             * @enum {string}
+             */
+            role: "VIEWER";
+        };
+        Member: {
+            user: components["schemas"]["UserSummary"];
+            role: components["schemas"]["MemberRole"];
+            /** Format: date-time */
+            added_at: string;
+        };
+        MemberList: {
+            data: components["schemas"]["Member"][];
+            pagination: components["schemas"]["Pagination"];
+        };
         LegalDocumentCreate: {
+            kind: components["schemas"]["DocumentKind"];
             doc_type: components["schemas"]["DocType"];
-            /** @example 168/2024/NĐ-CP */
+            /** @description Số hiệu (unique trong workspace). */
             number: string;
             title: string;
-            /** @example Chính phủ */
             issuer: string;
             /** Format: date */
             issued_date?: string | null;
@@ -501,7 +671,7 @@ export interface components {
             /** Format: date */
             expiry_date?: string | null;
         };
-        /** @description JSON Merge Patch — mọi field optional. */
+        /** @description JSON Merge Patch — mọi field optional; `kind` không đổi được. */
         LegalDocumentUpdate: {
             doc_type?: components["schemas"]["DocType"];
             number?: string;
@@ -518,6 +688,9 @@ export interface components {
         LegalDocument: {
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly workspace_id: string;
+            kind: components["schemas"]["DocumentKind"];
             doc_type: components["schemas"]["DocType"];
             number: string;
             title: string;
@@ -533,31 +706,13 @@ export interface components {
             readonly current_revision: number;
             readonly version: number;
             readonly article_count?: number;
+            /** @description Chỉ có với dự thảo. */
+            readonly change_instruction_count?: number;
             /** Format: date-time */
-            readonly published_at?: string | null;
+            readonly finalized_at?: string | null;
         } & components["schemas"]["Timestamps"];
         LegalDocumentList: {
             data: components["schemas"]["LegalDocument"][];
-            pagination: components["schemas"]["Pagination"];
-        };
-        SourceFile: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            document_id: string;
-            /** @example Nghị định 168-2024.pdf */
-            original_filename: string;
-            /** @enum {string} */
-            mime_type: "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "text/plain";
-            /** @enum {string} */
-            format: "pdf" | "docx" | "txt";
-            size_bytes: number;
-            sha256: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        SourceFileList: {
-            data: components["schemas"]["SourceFile"][];
             pagination: components["schemas"]["Pagination"];
         };
         /**
@@ -607,7 +762,7 @@ export interface components {
         OutlineItem: {
             level: components["schemas"]["ProvisionLevel"];
             number: string;
-            /** @example Điều 6. Xử phạt người điều khiển xe ô tô... */
+            /** @example Điều 6. Xử phạt … */
             label: string;
             /** Format: uuid */
             provision_id?: string | null;
@@ -615,6 +770,7 @@ export interface components {
         Revision: {
             revision_number: number;
             message?: string | null;
+            created_by: components["schemas"]["UserSummary"];
             /** Format: date-time */
             created_at: string;
         };
@@ -624,6 +780,35 @@ export interface components {
         RevisionList: {
             data: components["schemas"]["Revision"][];
             pagination: components["schemas"]["Pagination"];
+        };
+        SourceFile: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            document_id: string;
+            /** @example du-thao-sua-doi.pdf */
+            original_filename: string;
+            /** @enum {string} */
+            mime_type: "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "text/plain";
+            /** @enum {string} */
+            format: "pdf" | "docx" | "txt";
+            size_bytes: number;
+            sha256: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        SourceFileList: {
+            data: components["schemas"]["SourceFile"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** @description Tham chiếu gọn tới một điều khoản. */
+        ProvisionRef: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            document_id: string;
+            /** @example điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP */
+            citation: string;
         };
         Provision: {
             /** Format: uuid */
@@ -642,9 +827,10 @@ export interface components {
             label: string;
             /** @example điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP */
             citation: string;
-            /** @description Nội dung thuần văn bản của provision (không gồm con). */
+            /** @description Nội dung thuần văn bản (không gồm con). */
             text: string;
             ordinal: number;
+            readonly incoming_reference_count?: number;
             breadcrumbs?: {
                 /** Format: uuid */
                 id: string;
@@ -657,64 +843,129 @@ export interface components {
             data: components["schemas"]["Provision"][];
             pagination: components["schemas"]["Pagination"];
         };
-        DocumentRelationCreate: {
+        ProvisionReferenceCreate: {
             /** Format: uuid */
-            source_document_id: string;
-            /** Format: uuid */
-            target_document_id: string;
-            relation_type: components["schemas"]["RelationType"];
-            /** Format: uuid */
-            source_provision_id?: string | null;
-            /** Format: uuid */
-            target_provision_id?: string | null;
-            note?: string | null;
+            to_provision_id: string;
+            /** @description Đoạn văn chứa dẫn chiếu. */
+            quote?: string | null;
         };
-        DocumentRelation: components["schemas"]["DocumentRelationCreate"] & {
+        ProvisionReference: {
             /** Format: uuid */
-            readonly id: string;
+            id: string;
+            from: components["schemas"]["ProvisionRef"];
+            to: components["schemas"]["ProvisionRef"];
+            /**
+             * @description EXTRACTED = trích tự động khi lưu nội dung; MANUAL = người dùng thêm.
+             * @enum {string}
+             */
+            source: "EXTRACTED" | "MANUAL";
+            quote?: string | null;
             /** Format: date-time */
-            readonly created_at: string;
+            created_at: string;
         };
-        DocumentRelationList: {
-            data: components["schemas"]["DocumentRelation"][];
+        ProvisionReferenceList: {
+            data: components["schemas"]["ProvisionReference"][];
             pagination: components["schemas"]["Pagination"];
         };
-        ViolationCreate: {
-            slug: string;
-            name: string;
-            description?: string | null;
-            keywords?: string[];
+        ChangeInstructionCreate: {
+            type: components["schemas"]["ChangeType"];
+            /**
+             * Format: uuid
+             * @description Điều khoản trong dự thảo chứa chỉ dẫn.
+             */
+            draft_provision_id: string;
+            /**
+             * Format: uuid
+             * @description Điều khoản hiện hành bị tác động.
+             */
+            target_provision_id: string;
+            note?: string | null;
         };
-        ViolationUpdate: {
-            slug?: string;
-            name?: string;
-            description?: string | null;
-            keywords?: string[];
-        };
-        /** @description Tóm tắt chế tài hiện hành cho một loại xe (computed). */
-        SanctionSummary: {
+        ChangeInstructionUpdate: {
+            type?: components["schemas"]["ChangeType"];
             /** Format: uuid */
-            rule_id: string;
-            vehicle_type: components["schemas"]["VehicleType"];
+            target_provision_id?: string;
+            note?: string | null;
+        };
+        ChangeInstruction: {
+            /** Format: uuid */
+            readonly id: string;
+            /**
+             * Format: uuid
+             * @description Dự thảo chứa chỉ dẫn.
+             */
+            readonly document_id: string;
+            type: components["schemas"]["ChangeType"];
+            draft_provision: components["schemas"]["ProvisionRef"];
+            target_provision: components["schemas"]["ProvisionRef"];
+            note?: string | null;
+        } & components["schemas"]["Timestamps"];
+        ChangeInstructionList: {
+            data: components["schemas"]["ChangeInstruction"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        ImpactReport: {
+            /**
+             * Format: uuid
+             * @description Dự thảo được đánh giá.
+             */
+            document_id: string;
+            /** Format: date */
+            as_of: string;
+            /** Format: date-time */
+            generated_at: string;
+            summary: {
+                affected_provisions: number;
+                affected_documents: number;
+                /** @description Dẫn chiếu tới điều khoản bị bãi bỏ/thay thế. */
+                broken_references: number;
+                /** @description Dẫn chiếu tới điều khoản bị sửa đổi. */
+                references_to_review: number;
+                sanction_changes: number;
+                conflicts: number;
+            };
+            /** @description Mỗi phần tử là một điều khoản hiện hành bị tác động. */
+            items: components["schemas"]["ImpactItem"][];
+            warnings: components["schemas"]["ImpactWarning"][];
+        };
+        ImpactItem: {
+            target_provision: components["schemas"]["ProvisionRef"];
+            changes: {
+                /** Format: uuid */
+                instruction_id: string;
+                type: components["schemas"]["ChangeType"];
+                draft_provision: components["schemas"]["ProvisionRef"];
+            }[];
+            /** @description Điều khoản khác đang dẫn chiếu tới điều khoản bị tác động. */
+            affected_references: {
+                from_provision: components["schemas"]["ProvisionRef"];
+                /**
+                 * @description BROKEN khi đích bị bãi bỏ/thay thế; NEEDS_REVIEW khi đích bị sửa đổi.
+                 * @enum {string}
+                 */
+                status: "BROKEN" | "NEEDS_REVIEW";
+            }[];
+            sanction_changes: {
+                /** Format: uuid */
+                rule_id: string;
+                behavior: string;
+                before: components["schemas"]["SanctionSnapshot"];
+                /** @description null khi chế tài bị bãi bỏ; có giá trị khi dự thảo gắn chế tài mới cho điều khoản thay thế. */
+                after?: components["schemas"]["SanctionSnapshot"] | null;
+            }[];
+        };
+        ImpactWarning: {
+            /** @enum {string} */
+            code: "CONFLICTING_INSTRUCTIONS" | "BROKEN_REFERENCE" | "TARGET_NOT_IN_FORCE" | "TARGET_ALREADY_REPEALED";
+            message: string;
+            provision_ids: string[];
+        };
+        SanctionSnapshot: {
+            vehicle_type?: components["schemas"]["VehicleType"] | null;
             fine_min_vnd: number;
             fine_max_vnd: number;
             point_deduction_applicability: components["schemas"]["PointDeductionApplicability"];
             points_deducted?: number | null;
-            citation: string;
-        };
-        Violation: {
-            /** Format: uuid */
-            readonly id: string;
-            slug: string;
-            name: string;
-            description?: string | null;
-            keywords: string[];
-            /** @description Chế tài có hiệu lực tại `as_of`, mỗi loại xe một phần tử. */
-            readonly current_sanctions: components["schemas"]["SanctionSummary"][];
-        } & components["schemas"]["Timestamps"];
-        ViolationList: {
-            data: components["schemas"]["Violation"][];
-            pagination: components["schemas"]["Pagination"];
         };
         AdditionalSanction: {
             /** @enum {string} */
@@ -724,44 +975,30 @@ export interface components {
             description?: string | null;
         };
         SanctionRuleFields: {
-            /**
-             * Format: uuid
-             * @description Căn cứ pháp lý (bắt buộc khi tạo).
-             */
-            provision_id?: string;
-            vehicle_type?: components["schemas"]["VehicleType"];
-            /** @example 0 */
+            /** @description Mô tả hành vi vi phạm. */
+            behavior?: string;
+            vehicle_type?: components["schemas"]["VehicleType"] | null;
             fine_min_vnd?: number;
-            /** @example 0 */
             fine_max_vnd?: number;
             point_deduction_applicability?: components["schemas"]["PointDeductionApplicability"];
             points_deducted?: number | null;
             additional_sanctions?: components["schemas"]["AdditionalSanction"][];
-            remedial_measures?: string[];
             /** Format: date */
-            effective_from?: string;
+            effective_from?: string | null;
             /** Format: date */
             effective_to?: string | null;
             /**
-             * @description Đánh dấu dữ liệu mẫu (không phải số liệu pháp lý đã kiểm chứng).
+             * @description Dữ liệu mẫu
              * @default false
              */
             is_sample: boolean;
         };
-        SanctionRuleCreate: WithRequired<components["schemas"]["SanctionRuleFields"], "provision_id" | "vehicle_type" | "fine_min_vnd" | "fine_max_vnd" | "point_deduction_applicability" | "effective_from">;
+        SanctionRuleCreate: WithRequired<components["schemas"]["SanctionRuleFields"], "behavior" | "fine_min_vnd" | "fine_max_vnd" | "point_deduction_applicability">;
         SanctionRuleUpdate: components["schemas"]["SanctionRuleFields"];
         SanctionRule: components["schemas"]["SanctionRuleFields"] & {
             /** Format: uuid */
             readonly id: string;
-            /** Format: uuid */
-            readonly violation_id: string;
-            status: components["schemas"]["RuleStatus"];
-            /** @example điểm a khoản 4 Điều 6 Nghị định 168/2024/NĐ-CP */
-            readonly citation: string;
-            /** @description Chỉ có khi `expand=provision`. */
-            provision?: components["schemas"]["Provision"];
-            /** @description Chỉ có khi `expand=violation`. */
-            violation?: components["schemas"]["Violation"];
+            provision: components["schemas"]["ProvisionRef"];
         } & components["schemas"]["Timestamps"];
         SanctionRuleList: {
             data: components["schemas"]["SanctionRule"][];
@@ -771,10 +1008,10 @@ export interface components {
             /** @description ID phía client (React Flow). */
             id: string;
             /** @enum {string} */
-            kind: "DOCUMENT" | "PROVISION" | "VIOLATION" | "NOTE";
+            kind: "DOCUMENT" | "PROVISION" | "NOTE";
             /**
              * Format: uuid
-             * @description ID tài nguyên được tham chiếu (null với NOTE).
+             * @description ID văn bản/điều khoản được tham chiếu (null với NOTE).
              */
             ref_id?: string | null;
             label: string;
@@ -782,7 +1019,7 @@ export interface components {
                 x: number;
                 y: number;
             };
-            /** @description Thuộc tính hiển thị (màu, kích thước) — server không diễn giải. */
+            /** @description Thuộc tính hiển thị — server không diễn giải. */
             style?: Record<string, never>;
             /** @description true nếu tài nguyên tham chiếu không còn tồn tại. */
             readonly broken_ref?: boolean;
@@ -797,7 +1034,7 @@ export interface components {
              * @default CUSTOM
              * @enum {string}
              */
-            relation_type: "AMENDS" | "SUPPLEMENTS" | "REPLACES" | "REPEALS" | "REFERENCES" | "GUIDES" | "CUSTOM";
+            relation_type: "AMENDS" | "SUPPLEMENTS" | "REPLACES" | "REPEALS" | "REFERENCES" | "CUSTOM";
             label?: string | null;
         };
         Viewport: {
@@ -808,6 +1045,11 @@ export interface components {
         DiagramCreate: {
             title: string;
             description?: string | null;
+            /**
+             * Format: uuid
+             * @description Khởi tạo node/edge từ báo cáo tác động của dự thảo này.
+             */
+            from_draft_id?: string | null;
             nodes?: components["schemas"]["DiagramNode"][];
             edges?: components["schemas"]["DiagramEdge"][];
             viewport?: components["schemas"]["Viewport"];
@@ -822,6 +1064,8 @@ export interface components {
         DiagramSummary: {
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly workspace_id: string;
             title: string;
             description?: string | null;
             node_count: number;
@@ -839,7 +1083,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description Request sai cú pháp hoặc query param không hợp lệ. */
+        /** @description Request sai cú pháp hoặc query/path param không hợp lệ. */
         BadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -847,11 +1091,11 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "type": "https://trafficlex.example/problems/invalid-query-parameter",
+                 *       "type": "https://leximpact.example/problems/invalid-query-parameter",
                  *       "title": "Invalid query parameter",
                  *       "status": 400,
                  *       "detail": "page_size phải trong khoảng 1–100.",
-                 *       "instance": "/api/v1/violations",
+                 *       "instance": "/api/v1/workspaces/9c1f…/legal-documents",
                  *       "code": "INVALID_QUERY_PARAMETER",
                  *       "request_id": "01JDX3M8Q2N6"
                  *     }
@@ -859,7 +1103,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description Thiếu, sai hoặc hết hạn token / sai thông tin đăng nhập. */
+        /** @description Chưa đăng nhập hoặc phiên không hợp lệ. */
         Unauthorized: {
             headers: {
                 "WWW-Authenticate": components["headers"]["WWWAuthenticate"];
@@ -868,11 +1112,11 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "type": "https://trafficlex.example/problems/unauthenticated",
+                 *       "type": "https://leximpact.example/problems/unauthenticated",
                  *       "title": "Authentication required",
                  *       "status": 401,
-                 *       "detail": "Thiếu hoặc sai access token.",
-                 *       "instance": "/api/v1/legal-documents",
+                 *       "detail": "Cần đăng nhập để truy cập tài nguyên này.",
+                 *       "instance": "/api/v1/workspaces",
                  *       "code": "UNAUTHENTICATED",
                  *       "request_id": "01JDX3M8Q2N6"
                  *     }
@@ -880,7 +1124,27 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description Không tồn tại hoặc không có quyền xem. */
+        /** @description Là thành viên nhưng không đủ quyền (VIEWER cố ghi, hoặc thao tác chỉ dành cho OWNER). */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "https://leximpact.example/problems/forbidden",
+                 *       "title": "Forbidden",
+                 *       "status": 403,
+                 *       "detail": "Bạn chỉ có quyền xem workspace này.",
+                 *       "instance": "/api/v1/legal-documents/3f0c9a4e-1b2c-4d5e-8f90-123456789abc/content",
+                 *       "code": "FORBIDDEN",
+                 *       "request_id": "01JDX3M8Q2N6"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Không tồn tại hoặc không phải thành viên của workspace chứa nó (ẩn sự tồn tại). */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -888,7 +1152,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "type": "https://trafficlex.example/problems/resource-not-found",
+                 *       "type": "https://leximpact.example/problems/resource-not-found",
                  *       "title": "Resource not found",
                  *       "status": 404,
                  *       "detail": "Không tìm thấy văn bản.",
@@ -900,7 +1164,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description Xung đột trạng thái (trùng khoá, chuyển trạng thái sai, tài nguyên đang được dùng, idempotency key reuse). */
+        /** @description Xung đột trạng thái (trùng khoá, chuyển trạng thái sai, tài nguyên đang được dùng, chỉ dẫn xung khắc…). */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -927,7 +1191,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description Body vượt giới hạn (content 2 MB, diagram 500 node). */
+        /** @description Body vượt giới hạn (file 20 MB, nội dung 2 MB, lược đồ 500 node). */
         PayloadTooLarge: {
             headers: {
                 [name: string]: unknown;
@@ -953,7 +1217,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "type": "https://trafficlex.example/problems/invalid-provision-hierarchy",
+                 *       "type": "https://leximpact.example/problems/invalid-provision-hierarchy",
                  *       "title": "Invalid provision hierarchy",
                  *       "status": 422,
                  *       "detail": "Cấu trúc văn bản không hợp lệ.",
@@ -988,11 +1252,14 @@ export interface components {
         Page: number;
         /** @description Số phần tử mỗi trang (tối đa 100). */
         PageSize: number;
-        /** @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400. */
+        /**
+         * @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400.
+         * @example id,number,title,status
+         */
         Fields: string;
         /** @description Từ khoá full-text (không phân biệt dấu / hoa thường). */
         Query: string;
-        /** @description Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam). */
+        /** @description Ngày xét hiệu lực (mặc định hôm nay, giờ Việt Nam). */
         AsOf: string;
         /** @description ETag hiện tại; lệch ⇒ 412. */
         IfMatch: string;
@@ -1001,9 +1268,11 @@ export interface components {
         IfNoneMatch: string;
         /** @description UUID do client sinh; retry cùng key trả lại response đã lưu (24h). Cùng key khác body ⇒ 409. */
         IdempotencyKey: string;
+        WorkspaceId: string;
+        UserId: string;
         DocumentId: string;
         ProvisionId: string;
-        ViolationId: string;
+        InstructionId: string;
         FileId: string;
         DiagramId: string;
     };
@@ -1044,6 +1313,241 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    listWorkspaces: {
+        parameters: {
+            query?: {
+                /** @description Lọc theo vai trò của tôi trong workspace. */
+                role?: components["schemas"]["MemberRole"];
+                /** @description Số trang, bắt đầu từ 1. */
+                page?: components["parameters"]["Page"];
+                /** @description Số phần tử mỗi trang (tối đa 100). */
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Dự thảo sửa đổi nghị định xử phạt"
+                 *     }
+                 */
+                "application/json": components["schemas"]["WorkspaceCreate"];
+            };
+        };
+        responses: {
+            /** @description Đã tạo. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Đã xoá. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listWorkspaceMembers: {
+        parameters: {
+            query?: {
+                /** @description Số trang, bắt đầu từ 1. */
+                page?: components["parameters"]["Page"];
+                /** @description Số phần tử mỗi trang (tối đa 100). */
+                page_size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    shareWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "tham.dinh@example.com",
+                 *       "role": "VIEWER"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Đã chia sẻ. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeWorkspaceMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+                user_id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Đã thu hồi. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listLegalDocuments: {
         parameters: {
             query?: {
@@ -1051,21 +1555,27 @@ export interface operations {
                 page?: components["parameters"]["Page"];
                 /** @description Số phần tử mỗi trang (tối đa 100). */
                 page_size?: components["parameters"]["PageSize"];
-                /** @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400. */
+                /**
+                 * @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400.
+                 * @example id,number,title,status
+                 */
                 fields?: components["parameters"]["Fields"];
                 /** @description Từ khoá full-text (không phân biệt dấu / hoa thường). */
                 q?: components["parameters"]["Query"];
+                kind?: components["schemas"]["DocumentKind"];
                 doc_type?: components["schemas"]["DocType"];
                 status?: components["schemas"]["DocumentStatus"];
                 /** @description Lọc chính xác theo số hiệu. */
                 number?: string;
                 issued_after?: string;
                 issued_before?: string;
-                /** @description Cho phép: `issued_date`, `effective_date`, `number`, `created_at` (tiền tố `-` = giảm dần). Mặc định `-issued_date`. */
+                /** @description Cho phép: `issued_date`, `effective_date`, `number`, `created_at`, `updated_at` (tiền tố `-` = giảm dần). Mặc định `-updated_at`. */
                 sort?: string;
             };
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1081,6 +1591,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     createLegalDocument: {
@@ -1090,26 +1602,18 @@ export interface operations {
                 /** @description UUID do client sinh; retry cùng key trả lại response đã lưu (24h). Cùng key khác body ⇒ 409. */
                 "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
             };
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "doc_type": "NGHI_DINH",
-                 *       "number": "168/2024/NĐ-CP",
-                 *       "title": "Quy định xử phạt vi phạm hành chính về trật tự, an toàn giao thông trong lĩnh vực giao thông đường bộ",
-                 *       "issuer": "Chính phủ",
-                 *       "issued_date": "2024-12-26",
-                 *       "effective_date": "2025-01-01"
-                 *     }
-                 */
                 "application/json": components["schemas"]["LegalDocumentCreate"];
             };
         };
         responses: {
-            /** @description Đã tạo. */
+            /** @description Đã tạo (status `EDITING`). */
             201: {
                 headers: {
                     Location: components["headers"]["Location"];
@@ -1122,14 +1626,20 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
     getLegalDocument: {
         parameters: {
             query?: {
-                /** @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400. */
+                /**
+                 * @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400.
+                 * @example id,number,title,status
+                 */
                 fields?: components["parameters"]["Fields"];
             };
             header?: {
@@ -1159,6 +1669,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1181,6 +1693,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -1202,7 +1715,7 @@ export interface operations {
                 "application/merge-patch+json": components["schemas"]["LegalDocumentUpdate"];
                 /**
                  * @example {
-                 *       "status": "PUBLISHED"
+                 *       "status": "FINALIZED"
                  *     }
                  */
                 "application/json": components["schemas"]["LegalDocumentUpdate"];
@@ -1221,6 +1734,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
@@ -1257,6 +1771,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1274,11 +1789,46 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "message": "Thêm Điều 1 sửa đổi",
+                 *       "doc": {
+                 *         "type": "doc",
+                 *         "content": [
+                 *           {
+                 *             "type": "legalHeading",
+                 *             "attrs": {
+                 *               "level": "ARTICLE",
+                 *               "number": "1",
+                 *               "title": "Sửa đổi",
+                 *               "bổ sung một số điều của Nghị định …": null
+                 *             }
+                 *           },
+                 *           {
+                 *             "type": "legalHeading",
+                 *             "attrs": {
+                 *               "level": "CLAUSE",
+                 *               "number": "1"
+                 *             }
+                 *           },
+                 *           {
+                 *             "type": "paragraph",
+                 *             "content": [
+                 *               {
+                 *                 "type": "text",
+                 *                 "text": "Sửa đổi điểm a khoản 4 Điều 6 như sau: “[nội dung mới]”"
+                 *               }
+                 *             ]
+                 *           }
+                 *         ]
+                 *       }
+                 *     }
+                 */
                 "application/json": components["schemas"]["DocumentContentWrite"];
             };
         };
         responses: {
-            /** @description Đã lưu; trả content đã chuẩn hoá. */
+            /** @description Đã lưu; trả nội dung đã chuẩn hoá. */
             200: {
                 headers: {
                     ETag: components["headers"]["ETag"];
@@ -1290,6 +1840,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
@@ -1314,7 +1865,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK (mới nhất trước) */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1381,37 +1932,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listDocumentRelationsOfDocument: {
-        parameters: {
-            query?: {
-                direction?: "incoming" | "outgoing" | "both";
-                relation_type?: components["schemas"]["RelationType"];
-                /** @description Số trang, bắt đầu từ 1. */
-                page?: components["parameters"]["Page"];
-                /** @description Số phần tử mỗi trang (tối đa 100). */
-                page_size?: components["parameters"]["PageSize"];
-            };
-            header?: never;
-            path: {
-                document_id: components["parameters"]["DocumentId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentRelationList"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1475,6 +1996,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             413: components["responses"]["PayloadTooLarge"];
@@ -1528,6 +2050,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1558,22 +2081,29 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listProvisions: {
+    searchProvisions: {
         parameters: {
             query?: {
                 /** @description Từ khoá full-text (không phân biệt dấu / hoa thường). */
                 q?: components["parameters"]["Query"];
                 document_id?: string;
+                /** @description Chỉ điều khoản thuộc văn bản loại này. */
+                kind?: components["schemas"]["DocumentKind"];
                 level?: components["schemas"]["ProvisionLevel"];
                 /** @description Số trang, bắt đầu từ 1. */
                 page?: components["parameters"]["Page"];
                 /** @description Số phần tử mỗi trang (tối đa 100). */
                 page_size?: components["parameters"]["PageSize"];
-                /** @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400. */
+                /**
+                 * @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400.
+                 * @example id,number,title,status
+                 */
                 fields?: components["parameters"]["Fields"];
             };
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1588,6 +2118,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     getProvision: {
@@ -1610,22 +2142,24 @@ export interface operations {
                     "application/json": components["schemas"]["Provision"];
                 };
             };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
-    listDocumentRelations: {
+    listProvisionReferences: {
         parameters: {
             query?: {
-                /** @description Văn bản là source hoặc target. */
-                document_id?: string;
-                relation_type?: components["schemas"]["RelationType"];
+                direction?: "incoming" | "outgoing";
                 /** @description Số trang, bắt đầu từ 1. */
                 page?: components["parameters"]["Page"];
                 /** @description Số phần tử mỗi trang (tối đa 100). */
                 page_size?: components["parameters"]["PageSize"];
             };
             header?: never;
-            path?: never;
+            path: {
+                provision_id: components["parameters"]["ProvisionId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1636,22 +2170,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentRelationList"];
+                    "application/json": components["schemas"]["ProvisionReferenceList"];
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
-    createDocumentRelation: {
+    createProvisionReference: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                provision_id: components["parameters"]["ProvisionId"];
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DocumentRelationCreate"];
+                "application/json": components["schemas"]["ProvisionReferenceCreate"];
             };
         };
         responses: {
@@ -1662,21 +2200,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentRelation"];
+                    "application/json": components["schemas"]["ProvisionReference"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
-    deleteDocumentRelation: {
+    deleteProvisionReference: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                relation_id: string;
+                reference_id: string;
             };
             cookie?: never;
         };
@@ -1690,30 +2230,25 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
-    listViolations: {
+    listChangeInstructions: {
         parameters: {
             query?: {
-                /** @description Từ khoá full-text (không phân biệt dấu / hoa thường). */
-                q?: components["parameters"]["Query"];
-                /** @description Chỉ hành vi có chế tài cho loại xe này (nhiều giá trị cách nhau bởi dấu phẩy). */
-                vehicle_type?: string;
-                has_point_deduction?: boolean;
-                /** @description Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam). */
-                as_of?: components["parameters"]["AsOf"];
-                /** @description Cho phép: `name`, `created_at`, `relevance` (mặc định khi có `q`). */
-                sort?: string;
+                type?: components["schemas"]["ChangeType"];
+                target_document_id?: string;
                 /** @description Số trang, bắt đầu từ 1. */
                 page?: components["parameters"]["Page"];
                 /** @description Số phần tử mỗi trang (tối đa 100). */
                 page_size?: components["parameters"]["PageSize"];
-                /** @description Sparse fieldset, danh sách field cách nhau bởi dấu phẩy (luôn có `id`). Field không tồn tại ⇒ 400. */
-                fields?: components["parameters"]["Fields"];
             };
             header?: never;
-            path?: never;
+            path: {
+                document_id: components["parameters"]["DocumentId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1721,40 +2256,37 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
-                    Link: components["headers"]["Link"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ViolationList"];
+                    "application/json": components["schemas"]["ChangeInstructionList"];
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
-    createViolation: {
+    createChangeInstruction: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUID do client sinh; retry cùng key trả lại response đã lưu (24h). Cùng key khác body ⇒ 409. */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            header?: never;
+            path: {
+                document_id: components["parameters"]["DocumentId"];
             };
-            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
                 /**
                  * @example {
-                 *       "slug": "do-xe-tren-phan-duong-xe-chay-ngoai-do-thi",
-                 *       "name": "Đỗ xe trên phần đường xe chạy ở đoạn đường ngoài đô thị",
-                 *       "keywords": [
-                 *         "đỗ xe",
-                 *         "dừng xe",
-                 *         "ngoài đô thị"
-                 *       ]
+                 *       "type": "AMENDS",
+                 *       "draft_provision_id": "2b7f6d0e-8a4c-4f1e-9b2a-0c1d2e3f4a5b",
+                 *       "target_provision_id": "7b1e4c1a-2f7e-4a0e-9a59-1f0a3b6c9d10",
+                 *       "note": "Điều chỉnh khung phạt"
                  *     }
                  */
-                "application/json": components["schemas"]["ViolationCreate"];
+                "application/json": components["schemas"]["ChangeInstructionCreate"];
             };
         };
         responses: {
@@ -1765,24 +2297,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Violation"];
+                    "application/json": components["schemas"]["ChangeInstruction"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
-    getViolation: {
+    getChangeInstruction: {
         parameters: {
-            query?: {
-                /** @description Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam). */
-                as_of?: components["parameters"]["AsOf"];
-            };
+            query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                instruction_id: components["parameters"]["InstructionId"];
             };
             cookie?: never;
         };
@@ -1794,19 +2325,20 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Violation"];
+                    "application/json": components["schemas"]["ChangeInstruction"];
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
-    deleteViolation: {
+    deleteChangeInstruction: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                instruction_id: components["parameters"]["InstructionId"];
             };
             cookie?: never;
         };
@@ -1819,23 +2351,24 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
-    updateViolation: {
+    updateChangeInstruction: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                instruction_id: components["parameters"]["InstructionId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ViolationUpdate"];
+                "application/json": components["schemas"]["ChangeInstructionUpdate"];
             };
         };
         responses: {
@@ -1845,26 +2378,61 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Violation"];
+                    "application/json": components["schemas"]["ChangeInstruction"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getImpactReport: {
+        parameters: {
+            query?: {
+                /** @description Ngày dùng để xác định điều khoản/chế tài “đang có hiệu lực” (mặc định hôm nay). */
+                as_of?: string;
+            };
+            header?: {
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                document_id: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactReport"];
+                };
+            };
+            /** @description Không đổi. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
     listSanctionRules: {
         parameters: {
             query?: {
-                /** @description Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam). */
+                /** @description Ngày xét hiệu lực (mặc định hôm nay, giờ Việt Nam). */
                 as_of?: components["parameters"]["AsOf"];
-                vehicle_type?: components["schemas"]["VehicleType"];
-                /** @description Trạng thái tính tại `as_of`. */
-                status?: components["schemas"]["RuleStatus"];
-                /** @description Cho phép: `effective_from`, `fine_max_vnd`. Mặc định `-effective_from`. */
-                sort?: string;
                 /** @description Số trang, bắt đầu từ 1. */
                 page?: components["parameters"]["Page"];
                 /** @description Số phần tử mỗi trang (tối đa 100). */
@@ -1872,7 +2440,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                provision_id: components["parameters"]["ProvisionId"];
             };
             cookie?: never;
         };
@@ -1888,6 +2456,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1896,27 +2465,12 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                violation_id: components["parameters"]["ViolationId"];
+                provision_id: components["parameters"]["ProvisionId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "provision_id": "7b1e4c1a-2f7e-4a0e-9a59-1f0a3b6c9d10",
-                 *       "vehicle_type": "CAR",
-                 *       "fine_min_vnd": 0,
-                 *       "fine_max_vnd": 0,
-                 *       "point_deduction_applicability": "UNKNOWN",
-                 *       "points_deducted": null,
-                 *       "additional_sanctions": [],
-                 *       "remedial_measures": [],
-                 *       "effective_from": "2025-01-01",
-                 *       "effective_to": null,
-                 *       "is_sample": true
-                 *     }
-                 */
                 "application/json": components["schemas"]["SanctionRuleCreate"];
             };
         };
@@ -1933,18 +2487,14 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
     getSanctionRule: {
         parameters: {
-            query?: {
-                /** @description Ngày tra cứu hiệu lực (mặc định hôm nay, giờ Việt Nam). */
-                as_of?: components["parameters"]["AsOf"];
-                /** @description Nhúng tài nguyên liên quan. Cho phép: `provision`, `violation`. */
-                expand?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 rule_id: string;
@@ -1963,6 +2513,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -1985,6 +2536,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2014,6 +2566,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
         };
@@ -2031,7 +2584,9 @@ export interface operations {
                 page_size?: components["parameters"]["PageSize"];
             };
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2047,13 +2602,16 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     createDiagram: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                workspace_id: components["parameters"]["WorkspaceId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2075,6 +2633,8 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
         };
     };
@@ -2108,6 +2668,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2130,6 +2691,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2163,6 +2725,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             412: components["responses"]["PreconditionFailed"];
             413: components["responses"]["PayloadTooLarge"];

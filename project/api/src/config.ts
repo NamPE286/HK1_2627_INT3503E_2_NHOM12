@@ -4,7 +4,7 @@ import { z } from "zod";
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(8000),
-  DATABASE_URL: z.string().min(1).default("postgresql://trafficlex:trafficlex@localhost:5432/trafficlex"),
+  DATABASE_URL: z.string().min(1).default("postgresql://leximpact:leximpact@localhost:5432/leximpact"),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:8000"),
   BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET phải >= 32 ký tự"),
   CORS_ORIGINS: z

@@ -1,25 +1,28 @@
 import { sql } from "drizzle-orm";
 import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
+import { workspaces } from "./workspaces.js";
 
 export const DOC_TYPES = ["LUAT", "NGHI_DINH", "THONG_TU", "QUYET_DINH", "OTHER"] as const;
-export const DOCUMENT_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
+export const DOCUMENT_KINDS = ["IN_FORCE", "DRAFT"] as const;
+export const DOCUMENT_STATUSES = ["EDITING", "FINALIZED", "ARCHIVED"] as const;
 export type DocType = (typeof DOC_TYPES)[number];
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
 export const EMPTY_DOC = { type: "doc", content: [] } as const;
 
 /**
- * Văn bản pháp luật — thuộc về workspace của một user (owner_id).
- * Số hiệu `number` unique TRONG workspace (2 user có thể cùng nhập NĐ 168/2024/NĐ-CP).
+ * Văn bản trong workspace: văn bản hiện hành (IN_FORCE) hoặc dự thảo (DRAFT).
+ * Số hiệu `number` unique TRONG workspace.
  */
 export const legalDocuments = pgTable(
   "legal_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    ownerId: uuid("owner_id")
+    workspaceId: uuid("workspace_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<DocumentKind>().notNull(),
     docType: text("doc_type").$type<DocType>().notNull(),
     number: text("number").notNull(),
     title: text("title").notNull(),
@@ -27,18 +30,18 @@ export const legalDocuments = pgTable(
     issuedDate: date("issued_date"),
     effectiveDate: date("effective_date"),
     expiryDate: date("expiry_date"),
-    status: text("status").$type<DocumentStatus>().notNull().default("DRAFT"),
+    status: text("status").$type<DocumentStatus>().notNull().default("EDITING"),
     content: jsonb("content").notNull().default(EMPTY_DOC),
     currentRevision: integer("current_revision").notNull().default(0),
     version: integer("version").notNull().default(1),
-    publishedAt: timestamp("published_at", { withTimezone: true }),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("legal_documents_owner_number_uq").on(t.ownerId, t.number).where(sql`${t.deletedAt} is null`),
-    index("legal_documents_owner_status_issued_idx").on(t.ownerId, t.status, t.issuedDate),
+    uniqueIndex("legal_documents_ws_number_uq").on(t.workspaceId, t.number).where(sql`${t.deletedAt} is null`),
+    index("legal_documents_ws_kind_status_idx").on(t.workspaceId, t.kind, t.status),
   ],
 );
 

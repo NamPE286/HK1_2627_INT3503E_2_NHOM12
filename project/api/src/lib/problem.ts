@@ -2,7 +2,7 @@
  * RFC 9457 Problem Details — ai-rules/02-errors.md.
  * Service throw ProblemError; route KHÔNG tự build JSON lỗi. Handler toàn cục ở src/app.ts.
  */
-export const PROBLEM_BASE_URI = "https://trafficlex.example/problems/";
+export const PROBLEM_BASE_URI = "https://leximpact.example/problems/";
 export const PROBLEM_MEDIA_TYPE = "application/problem+json";
 
 const DEFAULTS: Record<number, [code: string, title: string]> = {

@@ -6,6 +6,8 @@ import { DiagramsPage } from "../pages/DiagramsPage";
 import { DocumentDetailPage } from "../pages/DocumentDetailPage";
 import { DocumentsPage } from "../pages/DocumentsPage";
 import { EditorPage } from "../pages/EditorPage";
+import { MembersPage } from "../pages/MembersPage";
+import { WorkspaceHome } from "../pages/WorkspaceHome";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -17,11 +19,12 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <Navigate to="/documents" replace /> },
-      { path: "/documents", element: <DocumentsPage /> },
+      { index: true, element: <WorkspaceHome /> },
+      { path: "/w/:workspaceId", element: <DocumentsPage /> },
+      { path: "/w/:workspaceId/members", element: <MembersPage /> },
+      { path: "/w/:workspaceId/diagrams", element: <DiagramsPage /> },
       { path: "/documents/:documentId", element: <DocumentDetailPage /> },
       { path: "/documents/:documentId/editor", element: <EditorPage /> },
-      { path: "/diagrams", element: <DiagramsPage /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

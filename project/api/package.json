@@ -1,5 +1,5 @@
 {
-  "name": "trafficlex-api",
+  "name": "leximpact-api",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/db/migrate.ts",
     "lint:spec": "spectral lint ../docs/api/openapi.yaml --ruleset ../.spectral.yaml",
-    "test:newman": "newman run postman/trafficlex.postman_collection.json -e postman/local.postman_environment.json --working-dir postman",
+    "test:newman": "newman run postman/leximpact.postman_collection.json -e postman/local.postman_environment.json --working-dir postman",
     "demo:seed": "bun scripts/demo-seed.ts"
   },
   "dependencies": {

@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "TrafficLex API v1",
+    "name": "LexImpact API v1",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Luồng 1.0.0: đăng ký/đăng nhập (Better Auth) → tạo văn bản → upload file → list. Chạy: bun run test:newman Request tới /api/auth/* gửi header Origin (Better Auth chống CSRF)."
+    "description": "Luồng 1.0.0: đăng ký/đăng nhập (Better Auth) → workspace → tạo văn bản → upload file → list → chốt. Chạy: bun run test:newman. Request tới /api/auth/* gửi header Origin (Better Auth chống CSRF)."
   },
   "item": [
     {
@@ -191,6 +191,47 @@
       }
     },
     {
+      "name": "List workspaces (lấy workspace của tôi)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const ws = pm.response.json().data.find(w => w.my_role === 'OWNER');",
+              "pm.test('có workspace OWNER', () => pm.expect(ws).to.be.an('object'));",
+              "pm.environment.set('workspace_id', ws.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/workspaces",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "workspaces"
+          ]
+        }
+      }
+    },
+    {
       "name": "Me với token rác → 401 problem+json",
       "event": [
         {
@@ -252,13 +293,15 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/legal-documents",
+          "raw": "{{base_url}}/api/v1/workspaces/{{workspace_id}}/legal-documents",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "workspaces",
+            "{{workspace_id}}",
             "legal-documents"
           ]
         },
@@ -274,7 +317,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"doc_type\": \"NGHI_DINH\",\n  \"number\": \"168/2024/NĐ-CP\",\n  \"title\": \"Quy định xử phạt vi phạm hành chính về trật tự, an toàn giao thông trong lĩnh vực giao thông đường bộ\",\n  \"issuer\": \"Chính phủ\",\n  \"issued_date\": \"2024-12-26\",\n  \"effective_date\": \"2025-01-01\"\n}"
+          "raw": "{\n  \"kind\": \"IN_FORCE\",\n  \"doc_type\": \"NGHI_DINH\",\n  \"number\": \"168/2024/NĐ-CP\",\n  \"title\": \"Quy định xử phạt vi phạm hành chính về trật tự, an toàn giao thông trong lĩnh vực giao thông đường bộ\",\n  \"issuer\": \"Chính phủ\",\n  \"issued_date\": \"2024-12-26\",\n  \"effective_date\": \"2025-01-01\"\n}"
         }
       }
     },
@@ -299,13 +342,15 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/legal-documents",
+          "raw": "{{base_url}}/api/v1/workspaces/{{workspace_id}}/legal-documents",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "workspaces",
+            "{{workspace_id}}",
             "legal-documents"
           ]
         },
@@ -321,7 +366,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"doc_type\": \"NGHI_DINH\",\n  \"number\": \"168/2024/NĐ-CP\",\n  \"title\": \"dup\",\n  \"issuer\": \"Chính phủ\"\n}"
+          "raw": "{\n  \"kind\": \"IN_FORCE\",\n  \"doc_type\": \"NGHI_DINH\",\n  \"number\": \"168/2024/NĐ-CP\",\n  \"title\": \"dup\",\n  \"issuer\": \"Chính phủ\"\n}"
         }
       }
     },
@@ -346,13 +391,15 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/legal-documents",
+          "raw": "{{base_url}}/api/v1/workspaces/{{workspace_id}}/legal-documents",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "workspaces",
+            "{{workspace_id}}",
             "legal-documents"
           ]
         },
@@ -368,7 +415,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"doc_type\": \"BOGUS\",\n  \"number\": \"\",\n  \"title\": \"x\",\n  \"issuer\": \"y\"\n}"
+          "raw": "{\n  \"kind\": \"IN_FORCE\",\n  \"doc_type\": \"BOGUS\",\n  \"number\": \"\",\n  \"title\": \"x\",\n  \"issuer\": \"y\"\n}"
         }
       }
     },
@@ -438,13 +485,15 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{base_url}}/api/v1/legal-documents?page=1&page_size=20&sort=-issued_date",
+          "raw": "{{base_url}}/api/v1/workspaces/{{workspace_id}}/legal-documents?page=1&page_size=20&sort=-issued_date",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "workspaces",
+            "{{workspace_id}}",
             "legal-documents"
           ],
           "query": [
@@ -490,13 +539,15 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{base_url}}/api/v1/legal-documents?page_size=1000",
+          "raw": "{{base_url}}/api/v1/workspaces/{{workspace_id}}/legal-documents?page_size=1000",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "workspaces",
+            "{{workspace_id}}",
             "legal-documents"
           ],
           "query": [
@@ -559,14 +610,14 @@
       }
     },
     {
-      "name": "Publish",
+      "name": "Finalize (chốt)",
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
               "pm.test('200', () => pm.response.to.have.status(200));",
-              "pm.test('PUBLISHED', () => pm.expect(pm.response.json().status).to.eql('PUBLISHED'));"
+              "pm.test('FINALIZED', () => pm.expect(pm.response.json().status).to.eql('FINALIZED'));"
             ]
           }
         }
@@ -603,12 +654,12 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"status\": \"PUBLISHED\"\n}"
+          "raw": "{\n  \"status\": \"FINALIZED\"\n}"
         }
       }
     },
     {
-      "name": "Publish → DRAFT không hợp lệ → 409",
+      "name": "Finalize → EDITING không hợp lệ → 409",
       "event": [
         {
           "listen": "test",
@@ -651,7 +702,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"status\": \"DRAFT\"\n}"
+          "raw": "{\n  \"status\": \"EDITING\"\n}"
         }
       }
     },

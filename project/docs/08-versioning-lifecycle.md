@@ -27,7 +27,7 @@ v2:
 | Pha | Thời gian (mô phỏng) | Việc làm | Đo |
 |---|---|---|---|
 | Plan | T0 | Công bố v2 spec + migration guide; v1 thêm `Deprecation` header | – |
-| Pilot | T0 → T0+30d | Frontend TrafficLex chuyển sang v2 trước | lỗi v2 < 0.5% |
+| Pilot | T0 → T0+30d | Frontend LexImpact chuyển sang v2 trước | lỗi v2 < 0.5% |
 | Migrate | T0+30d → T0+180d | Thông báo consumer (email, changelog, banner docs); v1 trả `Sunset: <date>`, `Link: rel="deprecation"` | % traffic v1 qua log `X-Api-Version-Served` |
 | Sunset | T0+180d | v1 sanction-rules trả `410 Gone` problem+json + link guide; giữ code archive 12 tháng | traffic v1 ≈ 0 |
 

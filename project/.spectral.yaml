@@ -6,7 +6,7 @@ rules:
   operation-description: off
   info-contact: warn
 
-  trafficlex-paths-kebab-case:
+  leximpact-paths-kebab-case:
     description: Path segment phải lowercase kebab-case (trừ {param}).
     severity: error
     given: $.paths[*]~
@@ -15,7 +15,7 @@ rules:
       functionOptions:
         match: "^(/([a-z0-9]+(-[a-z0-9]+)*|\\{[a-z0-9_]+\\}))+$"
 
-  trafficlex-no-verbs-in-path:
+  leximpact-no-verbs-in-path:
     description: Không dùng động từ trong path (dùng HTTP method).
     severity: error
     given: $.paths[*]~
@@ -24,7 +24,7 @@ rules:
       functionOptions:
         notMatch: "/(get|create|update|delete|add|remove|list|search|fetch|make)[a-z-]*(/|$)"
 
-  trafficlex-properties-snake-case:
+  leximpact-properties-snake-case:
     description: JSON property phải snake_case.
     severity: error
     given: $.components.schemas..properties[*]~
@@ -33,7 +33,7 @@ rules:
       functionOptions:
         match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
 
-  trafficlex-query-params-snake-case:
+  leximpact-query-params-snake-case:
     description: Query param phải snake_case.
     severity: error
     given: $..parameters[?(@.in == 'query')].name
@@ -42,7 +42,7 @@ rules:
       functionOptions:
         match: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
 
-  trafficlex-operation-has-4xx:
+  leximpact-operation-has-4xx:
     description: Mỗi operation phải khai báo ít nhất một response 4xx.
     severity: error
     given: $.paths[*][get,post,put,patch,delete].responses

@@ -8,7 +8,7 @@ Dùng major version trên URL `/api/v1`. Minor/patch chỉ trong `info.version` 
 
 ## Lý do
 - Dễ thấy, dễ test bằng browser/curl, cache/CDN phân biệt được theo URL (B9: "lựa chọn an toàn nhất cho public REST").
-- Header versioning (`Accept: application/vnd.trafficlex.v2+json`) linh hoạt hơn nhưng khó debug và khó cho consumer mới.
+- Header versioning (`Accept: application/vnd.leximpact.v2+json`) linh hoạt hơn nhưng khó debug và khó cho consumer mới.
 
 ## Hệ quả
 Version mới là router mới dùng chung service; phải duy trì song song trong thời gian deprecation.
